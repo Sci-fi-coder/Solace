@@ -7,12 +7,11 @@ stdlib enums, and datetime.  Any layer may safely import from here.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ── Enumerations ──────────────────────────────────────────────────────────────
 
@@ -143,8 +142,8 @@ class UserProfile(BaseModel):
     values_notes: str | None = Field(
         default=None, description="Free text capturing user's stated values and priorities."
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ── Messaging ─────────────────────────────────────────────────────────────────
@@ -160,7 +159,7 @@ class Message(BaseModel):
     speaker_role: Role | None = Field(
         default=None, description="Which agent role produced this assistant message."
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ── RAG ───────────────────────────────────────────────────────────────────────
@@ -246,4 +245,4 @@ class TurnTrace(BaseModel):
     explanation: str = Field(description="Human-readable explanation of why this reply was given.")
     steps: list[StepRecord] = Field(default_factory=list)
     provider_used: str = Field(description="Provider+model that produced the final reply.")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from datetime import datetime
+from pathlib import Path
 from typing import Any, Generator
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.contracts import Message, TurnTrace, UserProfile
 from app.storage.models import (
-    Base,
     MessageRow,
     ProfileRow,
     SessionRow,
@@ -43,6 +43,9 @@ def build_engine(database_url: str) -> Any:
     connect_args = {}
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+        url = make_url(database_url)
+        if url.database and url.database != ":memory:" and not url.database.startswith("file:"):
+            Path(url.database).parent.mkdir(parents=True, exist_ok=True)
 
     engine = create_engine(database_url, connect_args=connect_args, echo=False)
     create_all(engine)
@@ -51,7 +54,9 @@ def build_engine(database_url: str) -> Any:
 
 def make_session_factory(engine: Any) -> sessionmaker:
     """Return a session factory bound to *engine*."""
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    return sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
 
 
 @contextmanager

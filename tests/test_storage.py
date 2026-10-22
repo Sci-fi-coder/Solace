@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import sessionmaker
 
 from app.contracts import Message, Role, SafetyLevel, SafetyResult, TurnTrace, UserProfile
-from app.storage.models import create_all, Base
 from app.storage.repository import (
     append_message,
     build_engine,
@@ -25,7 +24,6 @@ from app.storage.repository import (
     save_profile,
     save_trace,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -263,3 +261,12 @@ def test_delete_user_data_does_not_affect_other_users(factory: sessionmaker) -> 
     delete_user_data(uid_a, factory=factory)
 
     assert get_user(uid_b, factory=factory) is not None
+
+
+def test_build_engine_creates_sqlite_parent_directory(tmp_path: Path) -> None:
+    """SQLite engine creation succeeds when the configured database folder is absent."""
+    database_path = tmp_path / "nested" / "solace.db"
+    engine = build_engine(f"sqlite:///{database_path.as_posix()}")
+
+    assert database_path.exists()
+    engine.dispose()
