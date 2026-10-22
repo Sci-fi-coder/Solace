@@ -10,38 +10,47 @@
 
 ---
 
-## Session: 2026-10-23 — Layer 0 Foundation
+## Session: 2026-10-23 — Layer 0 verification and completion
 
 ### Done
-- Created full repo skeleton: all directories and `__init__.py` files
-- `app/contracts/__init__.py` — all enums and Pydantic v2 models (Role, Phase, SafetyLevel, UserNeed, SafetyResult, EmotionReading, EmotionHypothesis, EmotionalState, UserProfile, Message, RetrievedItem, ConductorDecision, CriticVerdict, StepRecord, TurnTrace)
-- `app/config.py` — pydantic-settings Settings with per-provider keys, caps, fallback chains
-- `app/llm/gateway.py` — LLMGateway with TaskKind, fallback chain, backoff, cooldown, daily cap, structured output + repair, pre_send_filter hooks, provider-usage logging
-- `app/llm/providers.py` — GeminiProvider, OpenAICompatProvider, MockProvider
-- `app/storage/models.py` — SQLAlchemy 2.0 ORM models (users, sessions, messages, turn_traces, profiles, provider_usage)
-- `app/storage/repository.py` — all CRUD + `delete_user_data`
-- `app/tracing/recorder.py` — TraceRecorder context manager
-- `app/main.py` — FastAPI app with GET /health
-- `scripts/smoke_llm.py` — smoke test for real gateway
-- Full pytest suite: test_contracts, test_gateway, test_storage, test_tracing
-- README.md, AGENTS.md, .env.example, .gitignore, pyproject.toml, docs/
+- Verified the baseline was on `layer-0-foundation` at `cf79897` with a clean worktree.
+- Fixed provider alias handling so fallback results, cooldowns, and usage counts use the
+  configured provider name.
+- Made daily-cap claims atomic and UTC-dated; SQLite persistence failures now surface instead
+  of silently switching to memory-only behavior.
+- Required an engine for configured gateways and wired `scripts/smoke_llm.py` to the SQLite
+  engine; added a persistence/restart test.
+- Ensured structured-output repair is filtered and counted as a provider call; verified INFO
+  logs do not include the input message.
+- Fixed detached ORM results and SQLite database-directory creation; contract timestamps are
+  timezone-aware.
+- Removed unused `tenacity`, `aiosqlite`, and runtime `httpx` dependencies; kept `httpx` in the
+  dev extra for FastAPI testing.
+- Updated README safety limitations and replaced “GDPR delete” with “user data deletion”.
+- Confirmed the build backend is `setuptools.build_meta`; package discovery includes `app` and
+  `scripts`.
 
 ### Next
-1. Run `pytest` and fix any remaining failures
-2. Start **Layer 1**: implement `app/safety/sentinel.py` — keyword/pattern-based Safety Sentinel returning `SafetyResult`
-3. Implement `app/safety/emotion.py` — emotion classifier using a local model (e.g., `j-hartmann/emotion-english-distilroberta-base`) returning `EmotionReading`
-4. Wire safety + emotion into a lightweight `/chat` test endpoint (not production yet)
-5. Write tests for sentinel and emotion classifier
+1. Start **Layer 1** only: implement `app/safety/sentinel.py` as the rule-based Safety Sentinel
+   returning `SafetyResult`; add focused tests before wiring any LLM path.
 
 ### Known Issues
-- `google-genai` SDK 1.x has a different method signature than `google-generativeai`; verify `client.models.generate_content` works with chosen model names in smoke test
-- Daily-cap counter resets at midnight UTC — ensure `provider_usage` rows use UTC dates consistently
-- `aiosqlite` is a declared dependency for future async use; current storage layer is synchronous
+- Real Gemini/OpenAI-compatible provider requests were not run; provider SDK/model compatibility
+  still needs a synthetic-only smoke test with configured credentials.
+- Layer 1 safety and emotion processing are not implemented yet; Layer 0 exposes only `/health`.
+- The optional `[rag]` dependency extra was not installed or validated as part of this Layer 0
+  verification.
 
----
+### Verification
+- Python: 3.13.2
+- `pip install -e ".[dev]"`: passed.
+- `pytest -q`: 58 passed.
+- Uvicorn `GET /health`: `{"status":"ok","environment":"development",...}`.
+- Focused Ruff import/unused-symbol check: passed.
 
 ## Decisions Log (brief; full entries in DECISIONS.md)
-- SQLite chosen over PostgreSQL for zero-infrastructure dev; swap is one `DATABASE_URL` change
-- `tenacity` used for retry logic (mature, well-tested) rather than hand-rolled loops
-- `google-genai` (not `google-generativeai`) — the new unified Gemini SDK
-- MockProvider uses scripted deterministic outputs keyed by `TaskKind` to keep tests hermetic
+- SQLite chosen over PostgreSQL for zero-infrastructure dev; swap is one `DATABASE_URL` change.
+- Retry/cooldown transitions are explicit in the gateway; see D-011 for why unused `tenacity`
+  was removed.
+- `google-genai` (not `google-generativeai`) — the new unified Gemini SDK.
+- MockProvider uses scripted deterministic outputs keyed by `TaskKind` to keep tests hermetic.

@@ -30,7 +30,7 @@ Solace is a capstone project exploring how multiple AI agents—each embodying a
 | **2 – Knowledge Base / RAG** | ChromaDB, sentence-transformers, ingestion pipeline |
 | **3 – Explorer + State Model** | Emotional-state model, narrowing-question logic |
 | **4 – Role Agents + Conductor + Critic** | All four role agents, Conductor, Critic |
-| **5 – Memory / Profile / Privacy** | Cross-session memory, user profile, GDPR delete |
+| **5 – Memory / Profile / Privacy** | Cross-session memory, user profile, user data deletion |
 | **6 – Frontend** | Session UI with explanation panel |
 | **7 – Evaluation** | Automated evaluation suite using TurnTraces |
 
@@ -71,6 +71,15 @@ python -m scripts.smoke_llm
 - **Tests**: pytest
 
 > ⚠️ Free-tier LLM providers may log request data. Development and testing use **synthetic data only**.
+
+---
+
+## Safety and limitations
+
+Solace is not a substitute for professional care and does not diagnose or provide
+clinical treatment. If you are in crisis or immediate danger, contact local emergency
+services or a crisis hotline in your area. Free-tier LLM providers may log request data;
+use synthetic data only during development and testing.
 
 ---
 

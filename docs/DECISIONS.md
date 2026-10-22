@@ -56,3 +56,24 @@
 **Decision:** `app/config.py` uses `pydantic-settings` `BaseSettings` with `.env` file support.
 **Rationale:** Type-safe, validated config with automatic env-var loading. All provider secrets, caps, and gateway params in one place.
 **Alternative:** `os.getenv` calls scattered through the code. Rejected: untestable, no type safety, easy to miss a variable.
+
+### D-011: Gateway-managed retry and cooldown
+**Decision:** Keep the gateway's small retry loop and remove the unused `tenacity` dependency.
+**Rationale:** Rate limits must immediately set provider cooldown and fall through; transient
+provider errors use the gateway's configured backoff. Keeping these transitions explicit avoids
+an additional retry abstraction that was not used by the implementation.
+**Alternative:** `tenacity`. Rejected for Layer 0 because the gateway already owns fallback and
+cooldown decisions.
+
+### D-012: Defer async SQLite dependency
+**Decision:** Remove `aiosqlite` until the storage layer actually adopts asynchronous SQLAlchemy.
+**Rationale:** All Layer 0 repository operations are synchronous, so the driver is unused.
+**Alternative:** Retain a future-use dependency. Rejected to keep installed dependencies aligned
+with the implemented foundation.
+
+### D-013: Inject the gateway usage database
+**Decision:** Require a SQLAlchemy engine when building a configured gateway.
+**Rationale:** The configured gateway must persist provider daily-cap reservations. Injecting the
+engine keeps the LLM layer independent of storage implementation details.
+**Alternative:** Let the gateway construct its own engine. Rejected to preserve the architecture's
+LLM-to-storage dependency boundary.

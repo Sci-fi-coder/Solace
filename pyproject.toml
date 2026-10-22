@@ -21,17 +21,11 @@ dependencies = [
 
     # Database
     "sqlalchemy>=2.0.30",
-    "aiosqlite>=0.20.0",   # async SQLite driver for SQLAlchemy async (future use)
-
     # LLM providers
     "google-genai>=1.0.0",        # Gemini SDK (google-genai, not google-generativeai)
     "openai>=1.35.0",             # OpenAI-compatible client for Groq/OpenRouter/Mistral/Cerebras
 
-    # HTTP
-    "httpx>=0.27.0",
-
     # Utilities
-    "tenacity>=8.3.0",            # Retry / backoff logic
     "python-dotenv>=1.0.0",       # Load .env files
 ]
 
