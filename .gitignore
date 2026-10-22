@@ -1,0 +1,53 @@
+# Secrets
+.env
+*.env.local
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/raw/
+data/solace.db
+
+# Vector stores / embeddings
+chroma_data/
+vector_store/
+*.index
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/

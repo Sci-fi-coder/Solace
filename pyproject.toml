@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solace"
+version = "0.1.0"
+description = "Session-based multi-agent mental-health counselling system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+
+    # Data validation
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+
+    # Database
+    "sqlalchemy>=2.0.30",
+    "aiosqlite>=0.20.0",   # async SQLite driver for SQLAlchemy async (future use)
+
+    # LLM providers
+    "google-genai>=1.0.0",        # Gemini SDK (google-genai, not google-generativeai)
+    "openai>=1.35.0",             # OpenAI-compatible client for Groq/OpenRouter/Mistral/Cerebras
+
+    # HTTP
+    "httpx>=0.27.0",
+
+    # Utilities
+    "tenacity>=8.3.0",            # Retry / backoff logic
+    "python-dotenv>=1.0.0",       # Load .env files
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "httpx>=0.27.0",              # also needed for FastAPI TestClient
+]
+
+rag = [
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+log_cli = true
+log_cli_level = "WARNING"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]   # line length handled by formatter
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
