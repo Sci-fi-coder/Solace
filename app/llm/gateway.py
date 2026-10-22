@@ -19,8 +19,9 @@ import logging
 import random
 import time
 from collections.abc import Callable
-from datetime import date, datetime, timezone
-from typing import Any, Type, TypeVar
+from datetime import UTC, datetime
+from threading import Lock
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -59,18 +60,15 @@ class DailyCapExceededError(Exception):
 
 
 class _UsageCounter:
-    """Thread-safe in-memory daily call counter with SQLite persistence.
-
-    Persistence is best-effort — if the DB is unavailable the counter
-    falls back to in-memory only (meaning caps reset on restart).
-    """
+    """Thread-safe daily call counter with optional SQLite persistence."""
 
     def __init__(self) -> None:
         self._counts: dict[tuple[str, str], int] = {}  # (provider, date) -> count
         self._engine: Any = None
+        self._lock = Lock()
 
     def _today(self) -> str:
-        return date.today().isoformat()
+        return datetime.now(UTC).date().isoformat()
 
     def _key(self, provider: str) -> tuple[str, str]:
         return (provider, self._today())
@@ -83,49 +81,75 @@ class _UsageCounter:
     def _load_today(self) -> None:
         if self._engine is None:
             return
-        try:
-            from sqlalchemy import text  # noqa: PLC0415
-            with self._engine.connect() as conn:
-                rows = conn.execute(
-                    text(
-                        "SELECT provider, call_count FROM provider_usage WHERE date = :d"
-                    ),
-                    {"d": self._today()},
-                ).fetchall()
-            for row in rows:
-                self._counts[(row[0], self._today())] = row[1]
-        except Exception:
-            logger.debug("Usage counter: could not load from DB (table may not exist yet).")
+        from sqlalchemy import text  # noqa: PLC0415
 
-    def increment(self, provider: str) -> None:
-        """Increment counter and persist to DB."""
+        today = self._today()
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT provider, call_count FROM provider_usage WHERE date = :d"),
+                {"d": today},
+            ).fetchall()
+        with self._lock:
+            self._counts = {
+                key: value for key, value in self._counts.items() if key[1] != today
+            }
+            for row in rows:
+                self._counts[(row[0], today)] = row[1]
+
+    def claim(self, provider: str, cap: int | None) -> bool:
+        """Atomically reserve one provider call without exceeding its daily cap."""
+        if cap is not None and cap <= 0:
+            return False
+
         key = self._key(provider)
-        self._counts[key] = self._counts.get(key, 0) + 1
-        self._persist(provider)
+        if self._engine is None:
+            with self._lock:
+                count = self._counts.get(key, 0)
+                if cap is not None and count >= cap:
+                    return False
+                self._counts[key] = count + 1
+                return True
+
+        from sqlalchemy import text  # noqa: PLC0415
+
+        with self._lock, self._engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO provider_usage (provider, date, call_count)
+                    VALUES (:p, :d, 1)
+                    ON CONFLICT(provider, date) DO UPDATE
+                    SET call_count = provider_usage.call_count + 1
+                    WHERE :cap IS NULL OR provider_usage.call_count < :cap
+                    """
+                ),
+                {"p": provider, "d": key[1], "cap": cap},
+            )
+            if result.rowcount == 0:
+                row = conn.execute(
+                    text(
+                        "SELECT call_count FROM provider_usage "
+                        "WHERE provider = :p AND date = :d"
+                    ),
+                    {"p": provider, "d": key[1]},
+                ).one()
+                self._counts[key] = row[0]
+                return False
+
+            count = conn.execute(
+                text(
+                    "SELECT call_count FROM provider_usage "
+                    "WHERE provider = :p AND date = :d"
+                ),
+                {"p": provider, "d": key[1]},
+            ).scalar_one()
+            self._counts[key] = count
+            return True
 
     def get(self, provider: str) -> int:
         """Return today's call count for a provider."""
-        return self._counts.get(self._key(provider), 0)
-
-    def _persist(self, provider: str) -> None:
-        if self._engine is None:
-            return
-        try:
-            from sqlalchemy import text  # noqa: PLC0415
-            count = self.get(provider)
-            with self._engine.begin() as conn:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO provider_usage (provider, date, call_count)
-                        VALUES (:p, :d, :c)
-                        ON CONFLICT(provider, date) DO UPDATE SET call_count = :c
-                        """
-                    ),
-                    {"p": provider, "d": self._today(), "c": count},
-                )
-        except Exception as exc:
-            logger.debug("Usage counter: DB persist failed: %s", exc)
+        with self._lock:
+            return self._counts.get(self._key(provider), 0)
 
 
 _usage = _UsageCounter()
@@ -139,7 +163,7 @@ class LLMGateway:
 
     Usage::
 
-        gateway = LLMGateway.from_settings()
+        gateway = LLMGateway.from_settings(engine=database_engine)
         result = gateway.generate(TaskKind.converse, messages)
         result = gateway.generate(TaskKind.extract, messages, json_schema=MyModel)
     """
@@ -154,6 +178,7 @@ class LLMGateway:
         max_retries: int = 3,
         backoff_base: float = 1.0,
         pre_send_filter: list[Callable] | None = None,
+        usage_counter: _UsageCounter | None = None,
     ) -> None:
         """
         Args:
@@ -164,6 +189,7 @@ class LLMGateway:
             max_retries: Max retries per provider before falling through.
             backoff_base: Base delay (seconds) for exponential backoff.
             pre_send_filter: List of callables applied to messages before dispatch.
+            usage_counter: Optional daily usage counter; defaults to an isolated counter.
         """
         self._providers = providers
         self._chains = fallback_chains
@@ -172,17 +198,18 @@ class LLMGateway:
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._pre_send_filter: list[Callable] = pre_send_filter or []
+        self._usage_counter = usage_counter or _UsageCounter()
         # provider_name -> UTC timestamp when cooldown expires
         self._cooldown_until: dict[str, float] = {}
 
     # ── Factory ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def from_settings(cls, engine: Any = None) -> "LLMGateway":
+    def from_settings(cls, engine: Any) -> LLMGateway:
         """Build a gateway from app.config.settings.
 
         Providers with empty API keys are skipped with a WARNING.
-        If engine is provided, the usage counter will persist to SQLite.
+        The supplied engine persists provider usage counters in SQLite.
         """
         from app.config import settings  # local import avoids circular dep
 
@@ -228,12 +255,12 @@ class LLMGateway:
             max_retries=settings.gateway_max_retries,
             backoff_base=settings.gateway_backoff_base,
         )
-        if engine is not None:
-            _usage.init_db(engine)
+        _usage.init_db(engine)
+        gw._usage_counter = _usage
         return gw
 
     @classmethod
-    def from_mock(cls, **mock_kwargs: Any) -> "LLMGateway":
+    def from_mock(cls, **mock_kwargs: Any) -> LLMGateway:
         """Build a gateway backed entirely by MockProvider — for tests."""
         mock = MockProvider(**mock_kwargs)
         chains = {tk.value: ["mock"] for tk in TaskKind}
@@ -250,7 +277,7 @@ class LLMGateway:
         task: TaskKind,
         messages: list[dict[str, str]],
         *,
-        json_schema: Type[T] | None = None,
+        json_schema: type[T] | None = None,
         temperature: float = 0.7,
         max_tokens: int = 800,
     ) -> LLMResult:
@@ -287,22 +314,14 @@ class LLMGateway:
             if self._is_in_cooldown(provider_name):
                 logger.debug("Provider '%s' is in cooldown, skipping.", provider_name)
                 continue
-            if self._over_daily_cap(provider_name):
-                logger.warning(
-                    "Provider '%s' has hit its daily cap (%d), skipping.",
-                    provider_name,
-                    self._caps.get(provider_name, 0),
-                )
-                continue
-
             result = self._call_with_retry(
-                provider, filtered, temperature, max_tokens, response_format
+                provider_name, provider, filtered, temperature, max_tokens, response_format
             )
             if result is None:
                 errors.append(f"{provider_name}: all retries exhausted")
                 continue
 
-            _usage.increment(provider_name)
+            result.provider = provider_name
             logger.info(
                 "LLM call served by provider=%s model=%s latency_ms=%.0f task=%s",
                 result.provider,
@@ -312,7 +331,9 @@ class LLMGateway:
             )
 
             if json_schema is not None:
-                result = self._parse_structured(result, json_schema, provider, filtered)
+                result = self._parse_structured(
+                    result, json_schema, provider_name, provider, messages
+                )
 
             return result
 
@@ -346,14 +367,9 @@ class LLMGateway:
             "Provider '%s' rate-limited. Cooling down for %ds.", provider, self._cooldown_s
         )
 
-    def _over_daily_cap(self, provider: str) -> bool:
-        cap = self._caps.get(provider, 0)
-        if cap <= 0:
-            return False
-        return _usage.get(provider) >= cap
-
     def _call_with_retry(
         self,
+        provider_name: str,
         provider: BaseProvider,
         messages: list[dict[str, str]],
         temperature: float,
@@ -365,6 +381,13 @@ class LLMGateway:
         Returns None if all retries are exhausted (caller tries next provider).
         """
         for attempt in range(self._max_retries):
+            if not self._usage_counter.claim(provider_name, self._caps.get(provider_name)):
+                logger.warning(
+                    "Provider '%s' has hit its daily cap (%d), skipping.",
+                    provider_name,
+                    self._caps.get(provider_name, 0),
+                )
+                return None
             try:
                 return provider.generate(
                     messages,
@@ -373,13 +396,13 @@ class LLMGateway:
                     response_format=response_format,
                 )
             except RateLimitError:
-                self._set_cooldown(provider.name)
+                self._set_cooldown(provider_name)
                 return None  # fall through to next provider immediately
             except ProviderError as exc:
                 wait = self._backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
                 logger.debug(
                     "Provider '%s' error (attempt %d/%d): %s. Retrying in %.1fs.",
-                    provider.name,
+                    provider_name,
                     attempt + 1,
                     self._max_retries,
                     exc,
@@ -394,7 +417,8 @@ class LLMGateway:
     def _parse_structured(
         self,
         result: LLMResult,
-        schema: Type[T],
+        schema: type[T],
+        provider_name: str,
         provider: BaseProvider,
         original_messages: list[dict[str, str]],
     ) -> LLMResult:
@@ -406,7 +430,7 @@ class LLMGateway:
 
         logger.debug(
             "Structured output validation failed (provider=%s). Attempting repair.",
-            provider.name,
+            provider_name,
         )
         repair_messages = list(original_messages) + [
             {"role": "assistant", "content": result.text},
@@ -419,21 +443,32 @@ class LLMGateway:
                 ),
             },
         ]
+        if not self._usage_counter.claim(provider_name, self._caps.get(provider_name)):
+            raise StructuredOutputError(
+                f"Provider '{provider_name}' reached its daily cap before JSON repair."
+            )
+        repair_messages = self._apply_filters(repair_messages)
         try:
             repair_result = provider.generate(
                 repair_messages,
                 temperature=0.0,
-                max_tokens=result.latency_ms.__class__(800),  # type: ignore[arg-type]
+                max_tokens=800,
                 response_format={"type": "json_object"},
             )
+        except RateLimitError as exc:
+            self._set_cooldown(provider_name)
+            raise StructuredOutputError(
+                f"Repair call was rate-limited for provider={provider_name}: {exc}"
+            ) from exc
         except Exception as exc:
             raise StructuredOutputError(
-                f"Repair call failed for provider={provider.name}: {exc}"
+                f"Repair call failed for provider={provider_name}: {exc}"
             ) from exc
 
         parsed2, error2 = self._try_parse(repair_result.text, schema)
         if parsed2 is not None:
             repair_result.parsed = parsed2
+            repair_result.provider = provider_name
             return repair_result
 
         raise StructuredOutputError(
@@ -443,7 +478,7 @@ class LLMGateway:
         )
 
     @staticmethod
-    def _try_parse(text: str, schema: Type[T]) -> tuple[T | None, str | None]:
+    def _try_parse(text: str, schema: type[T]) -> tuple[T | None, str | None]:
         """Attempt to parse text as JSON and validate against schema.
 
         Returns (instance, None) on success or (None, error_str) on failure.

@@ -21,8 +21,10 @@ def main() -> int:
     """Run the smoke test."""
     # Import here so errors surface cleanly.
     try:
+        from app.config import settings
         from app.contracts import TaskKind
-        from app.llm.gateway import LLMGateway, GatewayExhaustedError
+        from app.llm.gateway import GatewayExhaustedError, LLMGateway
+        from app.storage.repository import build_engine
     except ImportError as exc:
         print(f"[smoke_llm] Import error: {exc}")
         print("  Did you run: pip install -e '.[dev]' ?")
@@ -31,7 +33,7 @@ def main() -> int:
     print("Solace LLM Gateway — smoke test")
     print("=" * 50)
 
-    gateway = LLMGateway.from_settings()
+    gateway = LLMGateway.from_settings(engine=build_engine(settings.database_url))
 
     synthetic_messages = [
         {

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
-import time
+from pydantic import BaseModel
 
 from app.contracts import TaskKind
 from app.llm.gateway import (
-    DailyCapExceededError,
     GatewayExhaustedError,
     LLMGateway,
     StructuredOutputError,
     _UsageCounter,
 )
-from app.llm.providers import MockProvider, RateLimitError, ProviderError, LLMResult
-from pydantic import BaseModel
-
+from app.llm.providers import LLMResult, MockProvider, ProviderError, RateLimitError
+from app.storage.repository import build_engine
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -150,16 +150,48 @@ def test_daily_cap_after_n_calls() -> None:
     assert r2.provider == "mock"
 
     # Third call: mock is capped, should fall to backup
-    # Note: usage counter is module-level, so we patch it inline
-    from app.llm import gateway as gw_module
-    original_get = gw_module._usage.get
-    try:
-        gw_module._usage._counts[("mock", gw_module._usage._today())] = 2
-        r3 = gw.generate(TaskKind.converse, _simple_messages())
-        assert r3.provider == "backup"
-    finally:
-        # restore
-        gw_module._usage._counts.pop(("mock", gw_module._usage._today()), None)
+    r3 = gw.generate(TaskKind.converse, _simple_messages())
+    assert r3.provider == "backup"
+
+
+def test_daily_cap_is_persisted_in_sqlite() -> None:
+    """A new gateway reads the existing provider usage count from SQLite."""
+    engine = build_engine("sqlite:///:memory:")
+    counter = _UsageCounter()
+    counter.init_db(engine)
+    chains = {tk.value: ["mock"] for tk in TaskKind}
+
+    first = LLMGateway(
+        providers={"mock": MockProvider(fixed_output="first")},
+        fallback_chains=chains,
+        daily_caps={"mock": 1},
+        usage_counter=counter,
+    )
+    assert first.generate(TaskKind.converse, _simple_messages()).text == "first"
+    assert counter.get("mock") == 1
+
+    persisted_counter = _UsageCounter()
+    persisted_counter.init_db(engine)
+    second = LLMGateway(
+        providers={"mock": MockProvider(fixed_output="second")},
+        fallback_chains=chains,
+        daily_caps={"mock": 1},
+        usage_counter=persisted_counter,
+    )
+    with pytest.raises(GatewayExhaustedError):
+        second.generate(TaskKind.converse, _simple_messages())
+
+
+def test_user_message_is_not_logged_at_info(caplog: pytest.LogCaptureFixture) -> None:
+    """Gateway INFO logs do not contain user message content."""
+    private_content = "synthetic-private-message-content"
+    gateway = _gateway_with(MockProvider())
+    caplog.set_level(logging.INFO, logger="app.llm.gateway")
+    gateway.generate(
+        TaskKind.converse,
+        [{"role": "user", "content": private_content}],
+    )
+    assert private_content not in caplog.text
 
 
 # ── Structured output ─────────────────────────────────────────────────────────
@@ -185,12 +217,14 @@ def test_structured_output_success() -> None:
 def test_structured_output_repair_retry() -> None:
     """Gateway attempts one repair call when first JSON is invalid, succeeds on repair."""
     call_count = {"n": 0}
+    sent_messages: list[list[dict[str, str]]] = []
     valid_json = '{"answer": "repaired", "confidence": 0.5}'
 
     class _TwoCallMock(MockProvider):
         """Returns bad JSON first, valid JSON on second call."""
         def generate(self, messages, **kwargs):  # type: ignore[override]
             call_count["n"] += 1
+            sent_messages.append(messages)
             if call_count["n"] == 1:
                 return LLMResult(
                     text="not json at all",
@@ -206,10 +240,14 @@ def test_structured_output_repair_retry() -> None:
             )
 
     gw = _gateway_with(_TwoCallMock())
+    gw.add_filter(
+        lambda messages: messages + [{"role": "system", "content": "filtered"}]
+    )
     result = gw.generate(TaskKind.extract, _simple_messages(), json_schema=_SampleSchema)
     assert result.parsed is not None
     assert result.parsed.answer == "repaired"
     assert call_count["n"] == 2
+    assert all(any(m["content"] == "filtered" for m in msgs) for msgs in sent_messages)
 
 
 def test_structured_output_raises_after_failed_repair() -> None:
