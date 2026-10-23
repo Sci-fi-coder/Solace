@@ -14,6 +14,7 @@ from app.config import settings
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
+settings.log_configuration()
 
 app = FastAPI(
     title="Solace",

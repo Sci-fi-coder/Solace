@@ -59,7 +59,13 @@ curl http://localhost:8000/health
 
 # 6. Smoke-test LLM gateway
 python -m scripts.smoke_llm
+# Optional: target one provider/task; model catalogs are also available separately.
+python -m scripts.smoke_llm --provider gemini --task converse
+python -m scripts.check_models
 ```
+
+Daily call caps are conservative local guardrails configured with the `*_DAILY_CAP`
+environment variables; they are not claims about provider quota limits.
 
 ---
 

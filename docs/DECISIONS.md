@@ -77,3 +77,46 @@ with the implemented foundation.
 engine keeps the LLM layer independent of storage implementation details.
 **Alternative:** Let the gateway construct its own engine. Rejected to preserve the architecture's
 LLM-to-storage dependency boundary.
+
+### D-014: Classify provider errors at the gateway boundary
+**Decision:** Map recognized HTTP authentication, bad-request/model, rate-limit, and transient
+failures to explicit provider exception types. Retry only transient errors, cool down 429/quota
+failures, and disable authentication-failing providers for the process. Unknown exceptions
+propagate unchanged.
+**Rationale:** A provider's HTTP status and underlying message must remain visible; stale models
+and authentication failures must not be mislabeled as rate limits or hidden by a fallback.
+Fallback results carry structured diagnostics for preceding failed or skipped providers.
+**Alternative:** Retry all `ProviderError` instances. Rejected because it retried permanent
+request/authentication failures and obscured their causes.
+
+### D-015: Keep provider models current and overridable
+**Decision:** Use `gemini-2.5-flash`, `llama-3.1-8b-instant`,
+`mistralai/mistral-small-2603`, and `qwen-3.8-27b` as the Gemini, Groq, OpenRouter, and
+Cerebras defaults; retain `mistral-small-latest` for Mistral. All remain overridable by
+environment settings and fallback-chain `provider/model` entries.
+**Rationale:** Direct Groq and Cerebras calls proved their prior configured models unavailable.
+Gemini's configured model was confirmed in its live catalog, and the public OpenRouter catalog
+confirmed its prior default was absent and the selected replacement present. Groq and Cerebras
+catalog requests were blocked by Cloudflare HTTP 403/Error 1010 in this environment; their
+replacement IDs are listed in their official supported-model catalogs. Mistral's model-list API
+requires authentication and no Mistral key is configured, so its existing alias was retained.
+**Alternative:** Guess replacements without checking provider evidence. Rejected; inaccessible
+catalogs are reported rather than treated as successful checks.
+
+### D-016: Conservative local daily-call guardrails
+**Decision:** Set each provider's default local daily cap to 20 calls, configurable through its
+`*_DAILY_CAP` environment variable.
+**Rationale:** These low defaults reduce accidental usage while model/provider compatibility is
+being validated. They are application guardrails, not claims about provider quotas or rate limits.
+**Alternative:** Encode provider free-tier limits as caps. Rejected because limits vary by
+account, plan, and time and were not verified for every provider.
+
+### D-017: Make provider configuration and fallback diagnostics observable
+**Decision:** Log the absolute dotenv path and configured provider names, warn only with names of
+settings that conflict between process environment and dotenv, and expose model-catalog checking
+at smoke-test startup. Smoke tests select one task by default and accept explicit provider/task
+arguments.
+**Rationale:** Configuration provenance and fallback causes must be debuggable without exposing
+credential values or spending multiple calls per smoke run.
+**Alternative:** Log raw configuration and run every task in each smoke test. Rejected for
+credential safety and avoidable usage.

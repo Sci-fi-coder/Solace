@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypedDict
 
 from app.contracts import TaskKind
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class LLMResult:
     """Output of a single LLM call."""
 
-    __slots__ = ("text", "parsed", "provider", "model", "latency_ms", "usage")
+    __slots__ = ("text", "parsed", "provider", "model", "latency_ms", "usage", "attempts")
 
     def __init__(
         self,
@@ -34,6 +34,7 @@ class LLMResult:
         latency_ms: float,
         parsed: Any = None,
         usage: dict[str, int] | None = None,
+        attempts: list[ProviderAttempt] | None = None,
     ) -> None:
         self.text = text
         self.parsed = parsed
@@ -41,6 +42,7 @@ class LLMResult:
         self.model = model
         self.latency_ms = latency_ms
         self.usage = usage
+        self.attempts = attempts or []
 
     def __repr__(self) -> str:
         return (
@@ -50,16 +52,76 @@ class LLMResult:
 
 
 class ProviderError(Exception):
-    """Raised when a provider call fails after all retries."""
+    """Base exception for known provider API failures."""
 
     def __init__(self, provider: str, status: int | None, message: str) -> None:
         super().__init__(f"[{provider}] HTTP {status}: {message}")
         self.provider = provider
         self.status = status
+        self.message = message
 
 
 class RateLimitError(ProviderError):
     """Raised on HTTP 429 — triggers cooldown in the gateway."""
+
+
+class AuthenticationError(ProviderError):
+    """Raised when provider credentials are missing, invalid, or unauthorized."""
+
+
+class BadRequestError(ProviderError):
+    """Raised when a provider rejects the request without a retryable failure."""
+
+
+class ModelNotFoundError(BadRequestError):
+    """Raised when the requested model is unavailable or decommissioned."""
+
+
+class TransientProviderError(ProviderError):
+    """Raised for timeouts, connection failures, and HTTP 5xx responses."""
+
+
+class ProviderAttempt(TypedDict):
+    """Diagnostic summary for a provider skipped or failed before service."""
+
+    provider: str
+    model: str
+    outcome: str
+    error_summary: str
+
+
+def _classified_exception(
+    provider: str,
+    exc: Exception,
+    status: int | None,
+) -> ProviderError | None:
+    """Map recognized provider failures to gateway resilience categories."""
+    message = str(exc)
+    details = f"{getattr(exc, 'code', '')} {message}".lower()
+
+    if (
+        status == 429
+        or "resource_exhausted" in details
+        or (status == 403 and "quota" in details)
+    ):
+        return RateLimitError(provider, status or 429, message)
+    if status in (401, 403):
+        return AuthenticationError(provider, status, message)
+    if status == 404 or any(
+        marker in details
+        for marker in ("model_not_found", "model_decommissioned", "model does not exist")
+    ):
+        return ModelNotFoundError(provider, status or 404, message)
+    if status == 400:
+        return BadRequestError(provider, status, message)
+    if status is not None and status >= 500:
+        return TransientProviderError(provider, status, message)
+    exception_name = type(exc).__name__.lower()
+    if isinstance(exc, (TimeoutError, ConnectionError)) or any(
+        marker in exception_name for marker in ("timeout", "connection", "connect")
+    ):
+        return TransientProviderError(provider, status, message)
+    return None
 
 
 class BaseProvider(ABC):
@@ -75,6 +137,7 @@ class BaseProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> LLMResult:
         """Send messages to the provider and return an LLMResult.
 
@@ -84,6 +147,7 @@ class BaseProvider(ABC):
             max_tokens: Maximum tokens in the response.
             response_format: Optional dict for requesting structured output
                              (e.g. {"type": "json_object"}).
+            model: Optional per-call model override.
 
         Raises:
             RateLimitError: On HTTP 429.
@@ -99,7 +163,7 @@ class GeminiProvider(BaseProvider):
 
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash") -> None:
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash") -> None:
         if not api_key:
             raise ValueError("GeminiProvider requires a non-empty api_key.")
         self._model = model
@@ -120,6 +184,7 @@ class GeminiProvider(BaseProvider):
         temperature: float = 0.7,
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> LLMResult:
         """Call Gemini generate_content and return LLMResult."""
         from google.genai import types  # type: ignore[import-untyped]
@@ -147,35 +212,48 @@ class GeminiProvider(BaseProvider):
         )
 
         t0 = time.perf_counter()
+        effective_model = model or self._model
         try:
             response = self._client.models.generate_content(
-                model=self._model,
+                model=effective_model,
                 contents=prompt,
                 config=config,
             )
         except Exception as exc:
-            # Inspect exception type/message for rate limit signals.
-            exc_str = str(exc)
-            status = self._extract_status(exc_str)
-            if status == 429 or "quota" in exc_str.lower() or "rate" in exc_str.lower():
-                raise RateLimitError(self.name, 429, exc_str) from exc
-            raise ProviderError(self.name, status, exc_str) from exc
+            status = self._extract_status(exc)
+            mapped = _classified_exception(self.name, exc, status)
+            if mapped is None:
+                raise
+            raise mapped from exc
 
         latency_ms = (time.perf_counter() - t0) * 1000
         text = response.text or ""
         return LLMResult(
             text=text,
             provider=self.name,
-            model=self._model,
+            model=effective_model,
             latency_ms=latency_ms,
         )
 
     @staticmethod
-    def _extract_status(msg: str) -> int | None:
+    def _extract_status(exc: Exception) -> int | None:
         """Try to parse an HTTP status code from an exception message."""
         import re
-        m = re.search(r"\b([45]\d{2})\b", msg)
-        return int(m.group(1)) if m else None
+        for candidate in (
+            getattr(exc, "status_code", None),
+            getattr(exc, "code", None),
+            getattr(getattr(exc, "response", None), "status_code", None),
+        ):
+            if isinstance(candidate, int) and 400 <= candidate <= 599:
+                return candidate
+        match = re.search(
+            r"\b([45]\d{2})\s+"
+            r"(?:INVALID_ARGUMENT|NOT_FOUND|UNAUTHENTICATED|PERMISSION_DENIED|"
+            r"RESOURCE_EXHAUSTED|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED)\b",
+            str(exc),
+            re.IGNORECASE,
+        )
+        return int(match.group(1)) if match else None
 
 
 # ── OpenAI-compatible ─────────────────────────────────────────────────────────
@@ -204,12 +282,14 @@ class OpenAICompatProvider(BaseProvider):
         temperature: float = 0.7,
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> LLMResult:
         """Call the OpenAI-compatible endpoint and return LLMResult."""
         import openai
 
+        effective_model = model or self._model
         kwargs: dict[str, Any] = {
-            "model": self._model,
+            "model": effective_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -222,10 +302,15 @@ class OpenAICompatProvider(BaseProvider):
             response = self._client.chat.completions.create(**kwargs)
         except openai.RateLimitError as exc:
             raise RateLimitError(self.name, 429, str(exc)) from exc
+        except openai.APITimeoutError as exc:
+            raise TransientProviderError(self.name, None, str(exc)) from exc
+        except openai.APIConnectionError as exc:
+            raise TransientProviderError(self.name, None, str(exc)) from exc
         except openai.APIStatusError as exc:
-            raise ProviderError(self.name, exc.status_code, str(exc)) from exc
-        except Exception as exc:
-            raise ProviderError(self.name, None, str(exc)) from exc
+            mapped = _classified_exception(self.name, exc, exc.status_code)
+            if mapped is None:
+                raise
+            raise mapped from exc
 
         latency_ms = (time.perf_counter() - t0) * 1000
         text = response.choices[0].message.content or ""
@@ -239,7 +324,7 @@ class OpenAICompatProvider(BaseProvider):
         return LLMResult(
             text=text,
             provider=self.name,
-            model=self._model,
+            model=effective_model,
             latency_ms=latency_ms,
             usage=usage,
         )
@@ -298,6 +383,7 @@ class MockProvider(BaseProvider):
         temperature: float = 0.7,
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> LLMResult:
         """Return scripted output or raise the configured exception."""
         if self._raise is not None:
@@ -309,6 +395,6 @@ class MockProvider(BaseProvider):
         return LLMResult(
             text=text,
             provider="mock",
-            model="mock-model",
+            model=model or "mock-model",
             latency_ms=1.0,
         )

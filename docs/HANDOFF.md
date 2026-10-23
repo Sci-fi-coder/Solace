@@ -10,6 +10,47 @@
 
 ---
 
+## Session: 2026-10-23 — Layer 0 gateway diagnostics and fixes
+
+### Done
+- Reproduced the direct provider failures: Groq returned HTTP 400 `model_decommissioned` for
+  `llama3-8b-8192`; Cerebras returned HTTP 404 `model_not_found` for `llama3.1-8b`.
+- Added provider error classes and gateway handling for rate limits, authentication, bad
+  requests/model errors, transient failures, and unknown exceptions. Authentication failures
+  disable that provider process-wide; unknown exceptions propagate unchanged.
+- Added structured fallback attempts to `LLMResult`, including explicit skipped reasons, and
+  retained `provider/model` fallback-chain overrides.
+- Treated blank and placeholder credentials as unconfigured; added safe dotenv/provider startup
+  diagnostics and conflict warnings that disclose variable names only.
+- Added `scripts/check_models.py`; updated model defaults/examples, conservative configurable
+  local daily caps, README usage, and mock-based retry/fallback tests.
+- Updated `scripts/smoke_llm.py` with `--provider`, `--task`, and one-task default behavior.
+- Ran the Gemini smoke call successfully with the synthetic prompt; it served on
+  `gemini-2.5-flash`.
+
+### Next
+1. Start **Layer 1** only: implement `app/safety/sentinel.py` as the rule-based Safety Sentinel
+   returning `SafetyResult`; add focused tests before wiring any LLM path.
+
+### Known Issues
+- Groq and Cerebras model-list requests are blocked by Cloudflare HTTP 403/Error 1010 in this
+  environment. Their current replacement model IDs are present in the official catalogs, but
+  `scripts/check_models.py` should be rerun where those endpoints are reachable.
+- Mistral's model-list endpoint requires authentication; no Mistral key is configured, so the
+  existing `mistral-small-latest` alias could not be checked against the authenticated catalog.
+- Layer 1 safety and emotion processing are not implemented; Layer 0 exposes only `/health`.
+- The optional `[rag]` dependency extra has not been installed or validated.
+
+### Verification
+- Python: 3.13.2.
+- `pytest -q`: 70 passed.
+- `python -m scripts.smoke_llm --provider gemini`: passed; provider `gemini`, model
+  `gemini-2.5-flash`, synthetic response `Smoke test OK.`.
+- Ruff checks on changed Python files: passed; `app/main.py`'s pre-existing `UP017` style finding
+  was excluded.
+
+---
+
 ## Session: 2026-10-23 — Layer 0 verification and completion
 
 ### Done

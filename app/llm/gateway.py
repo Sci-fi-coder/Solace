@@ -25,15 +25,21 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.config import redact_secrets
 from app.contracts import TaskKind
 from app.llm.providers import (
+    AuthenticationError,
+    BadRequestError,
     BaseProvider,
     GeminiProvider,
     LLMResult,
     MockProvider,
+    ModelNotFoundError,
     OpenAICompatProvider,
+    ProviderAttempt,
     ProviderError,
     RateLimitError,
+    TransientProviderError,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,6 +159,8 @@ class _UsageCounter:
 
 
 _usage = _UsageCounter()
+_PROCESS_DISABLED_PROVIDERS: dict[str, str] = {}
+_PROCESS_DISABLED_LOCK = Lock()
 
 
 # ── Gateway ───────────────────────────────────────────────────────────────────
@@ -179,6 +187,9 @@ class LLMGateway:
         backoff_base: float = 1.0,
         pre_send_filter: list[Callable] | None = None,
         usage_counter: _UsageCounter | None = None,
+        provider_models: dict[str, str] | None = None,
+        skipped_providers: dict[str, str] | None = None,
+        secrets: list[str] | None = None,
     ) -> None:
         """
         Args:
@@ -199,6 +210,9 @@ class LLMGateway:
         self._backoff_base = backoff_base
         self._pre_send_filter: list[Callable] = pre_send_filter or []
         self._usage_counter = usage_counter or _UsageCounter()
+        self._provider_models = provider_models or {}
+        self._skipped_providers = skipped_providers or {}
+        self._secrets = [secret for secret in (secrets or []) if secret]
         # provider_name -> UTC timestamp when cooldown expires
         self._cooldown_until: dict[str, float] = {}
 
@@ -215,13 +229,19 @@ class LLMGateway:
 
         providers: dict[str, BaseProvider] = {}
         all_provider_names = ["gemini", "groq", "openrouter", "mistral", "cerebras"]
+        provider_models: dict[str, str] = {}
+        skipped_providers: dict[str, str] = {}
+        secrets: list[str] = []
 
         for name in all_provider_names:
             cfg = settings.provider_config(name)
             key = cfg["api_key"]
+            provider_models[name] = cfg["model"]
             if not key:
+                skipped_providers[name] = "no API key configured"
                 logger.warning("Provider '%s' skipped: no API key configured.", name)
                 continue
+            secrets.append(key)
             try:
                 if name == "gemini":
                     providers[name] = GeminiProvider(api_key=key, model=cfg["model"])
@@ -233,15 +253,24 @@ class LLMGateway:
                         model=cfg["model"],
                     )
             except Exception as exc:
-                logger.warning("Provider '%s' failed to initialise: %s", name, exc)
+                skipped_providers[name] = f"initialization failed ({type(exc).__name__})"
+                logger.warning(
+                    "Provider '%s' failed to initialise (%s).",
+                    name,
+                    type(exc).__name__,
+                )
 
-        if not providers:
+        has_real_provider = bool(providers)
+        if not has_real_provider:
             logger.warning("No real providers available. Using MockProvider as fallback.")
             providers["mock"] = MockProvider()
 
         chains = {
             tk.value: settings.get_fallback_chain(tk.value) for tk in TaskKind
         }
+        if not has_real_provider:
+            for chain in chains.values():
+                chain.append("mock")
         caps = {
             name: settings.provider_config(name)["daily_cap"]
             for name in all_provider_names
@@ -254,6 +283,9 @@ class LLMGateway:
             cooldown_seconds=settings.provider_cooldown_seconds,
             max_retries=settings.gateway_max_retries,
             backoff_base=settings.gateway_backoff_base,
+            provider_models=provider_models,
+            skipped_providers=skipped_providers,
+            secrets=secrets,
         )
         _usage.init_db(engine)
         gw._usage_counter = _usage
@@ -280,6 +312,7 @@ class LLMGateway:
         json_schema: type[T] | None = None,
         temperature: float = 0.7,
         max_tokens: int = 800,
+        provider: str | None = None,
     ) -> LLMResult:
         """Dispatch an LLM call through the fallback chain for ``task``.
 
@@ -289,6 +322,7 @@ class LLMGateway:
             json_schema: If provided, request JSON and validate against this Pydantic model.
             temperature: Sampling temperature.
             max_tokens: Max tokens to generate.
+            provider: Optional provider name to call instead of the configured chain.
 
         Returns:
             LLMResult with text (and parsed if json_schema provided).
@@ -304,24 +338,53 @@ class LLMGateway:
         if json_schema is not None:
             response_format = {"type": "json_object"}
 
-        chain = self._chains.get(task.value, [])
-        errors: list[str] = []
+        chain = [provider] if provider else self._chains.get(task.value, [])
+        attempts: list[ProviderAttempt] = []
 
-        for provider_name in chain:
+        for chain_item in chain:
+            provider_name, separator, model_override = chain_item.partition("/")
+            provider_name = provider_name.strip().lower()
+            model = (
+                model_override.strip()
+                if separator and model_override.strip()
+                else self._provider_models.get(provider_name, "")
+            )
             provider = self._providers.get(provider_name)
             if provider is None:
+                reason = self._skipped_providers.get(provider_name, "provider unavailable")
+                attempts.append(self._skip_attempt(provider_name, model, reason))
+                continue
+            with _PROCESS_DISABLED_LOCK:
+                disabled_reason = _PROCESS_DISABLED_PROVIDERS.get(provider_name)
+            if disabled_reason is not None:
+                attempts.append(
+                    self._skip_attempt(provider_name, model, disabled_reason)
+                )
                 continue
             if self._is_in_cooldown(provider_name):
-                logger.debug("Provider '%s' is in cooldown, skipping.", provider_name)
+                attempts.append(self._skip_attempt(provider_name, model, "cooldown"))
                 continue
-            result = self._call_with_retry(
-                provider_name, provider, filtered, temperature, max_tokens, response_format
+            result, attempt = self._call_with_retry(
+                provider_name,
+                provider,
+                filtered,
+                temperature,
+                max_tokens,
+                response_format,
+                model,
             )
             if result is None:
-                errors.append(f"{provider_name}: all retries exhausted")
+                attempts.append(attempt)
                 continue
 
             result.provider = provider_name
+            result.attempts = attempts
+            if attempts:
+                logger.debug(
+                    "Provider fallback attempts before serving: %s -> served by %s.",
+                    self._format_attempts(attempts),
+                    provider_name,
+                )
             logger.info(
                 "LLM call served by provider=%s model=%s latency_ms=%.0f task=%s",
                 result.provider,
@@ -337,8 +400,13 @@ class LLMGateway:
 
             return result
 
+        errors = [
+            f"{attempt['provider']}: {attempt['error_summary']}"
+            for attempt in attempts
+        ]
         raise GatewayExhaustedError(
-            f"All providers failed for task={task.value}. Errors: {errors}"
+            f"All providers failed for task={task.value}. "
+            f"Attempts: {'; '.join(errors) if errors else 'no providers configured'}"
         )
 
     # ── Filters ───────────────────────────────────────────────────────────────
@@ -375,42 +443,153 @@ class LLMGateway:
         temperature: float,
         max_tokens: int,
         response_format: dict[str, Any] | None,
-    ) -> LLMResult | None:
+        model: str,
+    ) -> tuple[LLMResult | None, ProviderAttempt]:
         """Attempt provider call with exponential backoff + jitter.
 
-        Returns None if all retries are exhausted (caller tries next provider).
+        Return the result and diagnostic attempt, or a failed attempt for fallback.
         """
-        for attempt in range(self._max_retries):
+        max_retries = max(1, self._max_retries)
+        last_error: ProviderError | None = None
+        for attempt_index in range(max_retries):
             if not self._usage_counter.claim(provider_name, self._caps.get(provider_name)):
+                summary = "skipped: daily cap reached"
+                if last_error is not None:
+                    summary += f" after {self._exception_summary(last_error)}"
                 logger.warning(
                     "Provider '%s' has hit its daily cap (%d), skipping.",
                     provider_name,
                     self._caps.get(provider_name, 0),
                 )
-                return None
+                return None, self._attempt(provider_name, model, "skipped", summary)
             try:
-                return provider.generate(
-                    messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    response_format=response_format,
-                )
-            except RateLimitError:
+                kwargs: dict[str, Any] = {
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "response_format": response_format,
+                }
+                if model:
+                    kwargs["model"] = model
+                result = provider.generate(messages, **kwargs)
+                return result, self._attempt(provider_name, model or result.model, "served", "")
+            except RateLimitError as exc:
                 self._set_cooldown(provider_name)
-                return None  # fall through to next provider immediately
-            except ProviderError as exc:
-                wait = self._backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
-                logger.debug(
-                    "Provider '%s' error (attempt %d/%d): %s. Retrying in %.1fs.",
+                summary = self._exception_summary(exc)
+                return None, self._attempt(provider_name, model, "failed", summary)
+            except AuthenticationError as exc:
+                self._disable_provider(provider_name)
+                summary = self._exception_summary(exc)
+                logger.warning(
+                    "Provider '%s' disabled after an authentication failure: %s",
                     provider_name,
-                    attempt + 1,
-                    self._max_retries,
-                    exc,
-                    wait,
+                    summary,
                 )
-                if attempt < self._max_retries - 1:
-                    time.sleep(wait)
-        return None
+                return None, self._attempt(provider_name, model, "failed", summary)
+            except (ModelNotFoundError, BadRequestError) as exc:
+                summary = self._exception_summary(exc)
+                return None, self._attempt(provider_name, model, "failed", summary)
+            except ProviderError as exc:
+                if exc.status in (401, 403):
+                    self._disable_provider(provider_name)
+                    summary = self._exception_summary(exc)
+                    logger.warning(
+                        "Provider '%s' disabled after an authentication failure: %s",
+                        provider_name,
+                        summary,
+                    )
+                    return None, self._attempt(provider_name, model, "failed", summary)
+                if exc.status == 429:
+                    self._set_cooldown(provider_name)
+                    return None, self._attempt(
+                        provider_name, model, "failed", self._exception_summary(exc)
+                    )
+                if exc.status in (400, 404):
+                    return None, self._attempt(
+                        provider_name, model, "failed", self._exception_summary(exc)
+                    )
+                if not isinstance(exc, TransientProviderError) and not (
+                    exc.status is not None and exc.status >= 500
+                ):
+                    raise
+                last_error = exc
+                self._retry_sleep(provider_name, exc, attempt_index, max_retries)
+                continue
+            except (TimeoutError, ConnectionError) as exc:
+                last_error = TransientProviderError(provider_name, None, str(exc))
+                self._retry_sleep(provider_name, last_error, attempt_index, max_retries)
+                continue
+
+        if last_error is None:
+            raise RuntimeError("Provider retry loop ended without a result or failure.")
+        summary = self._exception_summary(last_error)
+        summary = f"{summary} (after {max_retries} attempts)"
+        return None, self._attempt(provider_name, model, "failed", summary)
+
+    def _retry_sleep(
+        self,
+        provider_name: str,
+        error: ProviderError,
+        attempt_index: int,
+        max_retries: int,
+    ) -> None:
+        """Log and wait before a transient provider retry."""
+        if attempt_index >= max_retries - 1:
+            return
+        wait = self._backoff_base * (2 ** attempt_index) + random.uniform(0, 0.5)
+        logger.debug(
+            "Provider '%s' transient error (attempt %d/%d): %s. Retrying in %.1fs.",
+            provider_name,
+            attempt_index + 1,
+            max_retries,
+            self._exception_summary(error),
+            wait,
+        )
+        time.sleep(wait)
+
+    @staticmethod
+    def _disable_provider(provider_name: str) -> None:
+        """Disable an authentication-failing provider for this process."""
+        with _PROCESS_DISABLED_LOCK:
+            _PROCESS_DISABLED_PROVIDERS[provider_name] = (
+                "authentication failure (provider disabled)"
+            )
+
+    def _exception_summary(self, error: Exception) -> str:
+        """Format an exception type and message with configured keys redacted."""
+        return redact_secrets(
+            f"{type(error).__name__}: {error}",
+            self._secrets,
+        )
+
+    @staticmethod
+    def _attempt(
+        provider: str,
+        model: str,
+        outcome: str,
+        error_summary: str,
+    ) -> ProviderAttempt:
+        """Build a structured provider-attempt record."""
+        return {
+            "provider": provider,
+            "model": model,
+            "outcome": outcome,
+            "error_summary": error_summary,
+        }
+
+    def _skip_attempt(self, provider: str, model: str, reason: str) -> ProviderAttempt:
+        """Record a skipped provider with a safe, explicit reason."""
+        summary = f"skipped: {reason}"
+        logger.debug("Provider '%s' %s.", provider, summary)
+        return self._attempt(provider, model, "skipped", summary)
+
+    @staticmethod
+    def _format_attempts(attempts: list[ProviderAttempt]) -> str:
+        """Format attempts for key-free debug and smoke diagnostics."""
+        return " -> ".join(
+            f"{attempt['provider']}: {attempt['outcome']} "
+            f"({attempt['error_summary']})"
+            for attempt in attempts
+        )
 
     # ── Structured output ─────────────────────────────────────────────────────
 
@@ -469,6 +648,7 @@ class LLMGateway:
         if parsed2 is not None:
             repair_result.parsed = parsed2
             repair_result.provider = provider_name
+            repair_result.attempts = result.attempts
             return repair_result
 
         raise StructuredOutputError(

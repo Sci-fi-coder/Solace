@@ -14,7 +14,15 @@ from app.llm.gateway import (
     StructuredOutputError,
     _UsageCounter,
 )
-from app.llm.providers import LLMResult, MockProvider, ProviderError, RateLimitError
+from app.llm.providers import (
+    AuthenticationError,
+    LLMResult,
+    MockProvider,
+    ModelNotFoundError,
+    ProviderError,
+    RateLimitError,
+    TransientProviderError,
+)
 from app.storage.repository import build_engine
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -37,6 +45,20 @@ def _gateway_with(provider: MockProvider, *, caps: dict | None = None) -> LLMGat
     )
 
 
+class _FailingProvider(MockProvider):
+    """Count calls to a deterministic provider that raises a chosen exception."""
+
+    def __init__(self, error: Exception, name: str) -> None:
+        super().__init__()
+        self.error = error
+        self.name = name
+        self.calls = 0
+
+    def generate(self, messages, **kwargs):  # type: ignore[override]
+        self.calls += 1
+        raise self.error
+
+
 # ── Basic success ─────────────────────────────────────────────────────────────
 
 
@@ -47,6 +69,20 @@ def test_gateway_returns_result_on_success() -> None:
     assert result.provider == "mock"
     assert isinstance(result.text, str)
     assert result.latency_ms >= 0
+
+
+def test_provider_model_chain_override_is_used() -> None:
+    """Fallback-chain entries may select a model as provider/model."""
+    provider = MockProvider(fixed_output="model override")
+    gateway = LLMGateway(
+        providers={"mock": provider},
+        fallback_chains={task.value: ["mock/custom-model"] for task in TaskKind},
+        daily_caps={"mock": 100},
+    )
+
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.model == "custom-model"
 
 
 # ── 429 / fallback ────────────────────────────────────────────────────────────
@@ -71,6 +107,14 @@ def test_gateway_fallback_on_rate_limit() -> None:
     result = gw.generate(TaskKind.converse, _simple_messages())
     assert result.provider == "mock_fallback"
     assert result.text == "Fallback reply"
+    assert result.attempts == [
+        {
+            "provider": "mock_429",
+            "model": "",
+            "outcome": "failed",
+            "error_summary": "RateLimitError: [mock_429] HTTP 429: too many requests",
+        }
+    ]
 
 
 def test_gateway_sets_cooldown_after_429() -> None:
@@ -91,6 +135,7 @@ def test_gateway_sets_cooldown_after_429() -> None:
     # First call — m1 429s, m2 serves
     r1 = gw.generate(TaskKind.converse, _simple_messages())
     assert r1.provider == "m2"
+    assert r1.attempts[0]["error_summary"].startswith("RateLimitError:")
 
     # m1 should now be in cooldown; next call should still go to m2
     r2 = gw.generate(TaskKind.converse, _simple_messages())
@@ -102,8 +147,139 @@ def test_gateway_exhausted_when_all_providers_fail() -> None:
     """GatewayExhaustedError is raised when every provider in chain fails."""
     mock_fail = MockProvider(raise_on_call=ProviderError("mock", 500, "server error"))
     gw = _gateway_with(mock_fail)
-    with pytest.raises(GatewayExhaustedError):
+    with pytest.raises(GatewayExhaustedError) as raised:
         gw.generate(TaskKind.converse, _simple_messages())
+    assert "ProviderError: [mock] HTTP 500: server error" in str(raised.value)
+
+
+def test_authentication_failure_is_not_retried_and_disables_provider() -> None:
+    """Authentication failures skip retries and disable that provider for later calls."""
+    auth = _FailingProvider(AuthenticationError("auth", 401, "invalid credentials"), "auth")
+    backup = MockProvider(fixed_output="backup")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"auth": auth, "backup": backup},
+        fallback_chains={task.value: ["auth", "backup"] for task in TaskKind},
+        daily_caps={"auth": 100, "backup": 100},
+        max_retries=3,
+        backoff_base=0.0,
+    )
+
+    first = gateway.generate(TaskKind.converse, _simple_messages())
+    another_gateway = LLMGateway(
+        providers={"auth": auth, "backup": backup},
+        fallback_chains={task.value: ["auth", "backup"] for task in TaskKind},
+        daily_caps={"auth": 100, "backup": 100},
+        max_retries=3,
+        backoff_base=0.0,
+    )
+    second = another_gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert first.provider == second.provider == "backup"
+    assert auth.calls == 1
+    assert "AuthenticationError:" in first.attempts[0]["error_summary"]
+    assert second.attempts[0]["error_summary"] == (
+        "skipped: authentication failure (provider disabled)"
+    )
+
+
+def test_model_not_found_is_not_retried_and_falls_through() -> None:
+    """A missing model is recorded once and the gateway serves from its next provider."""
+    invalid_model = _FailingProvider(
+        ModelNotFoundError("invalid", 404, "model not found"),
+        "invalid",
+    )
+    backup = MockProvider(fixed_output="backup")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"invalid": invalid_model, "backup": backup},
+        fallback_chains={task.value: ["invalid", "backup"] for task in TaskKind},
+        daily_caps={"invalid": 100, "backup": 100},
+        max_retries=3,
+        backoff_base=0.0,
+    )
+
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.provider == "backup"
+    assert invalid_model.calls == 1
+    assert result.attempts[0]["error_summary"].startswith("ModelNotFoundError:")
+
+
+def test_transient_failure_retries_then_falls_through() -> None:
+    """Transient errors retry up to the configured limit before fallback."""
+    transient = _FailingProvider(
+        TransientProviderError("transient", 503, "service unavailable"),
+        "transient",
+    )
+    backup = MockProvider(fixed_output="backup")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"transient": transient, "backup": backup},
+        fallback_chains={task.value: ["transient", "backup"] for task in TaskKind},
+        daily_caps={"transient": 100, "backup": 100},
+        max_retries=2,
+        backoff_base=0.0,
+    )
+
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.provider == "backup"
+    assert transient.calls == 2
+    assert result.attempts[0]["error_summary"].endswith("(after 2 attempts)")
+
+
+def test_timeout_retries_then_falls_through() -> None:
+    """Timeout exceptions use the transient retry path."""
+    timeout = _FailingProvider(TimeoutError("synthetic timeout"), "timeout")
+    backup = MockProvider(fixed_output="backup")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"timeout": timeout, "backup": backup},
+        fallback_chains={task.value: ["timeout", "backup"] for task in TaskKind},
+        daily_caps={"timeout": 100, "backup": 100},
+        max_retries=2,
+        backoff_base=0.0,
+    )
+
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.provider == "backup"
+    assert timeout.calls == 2
+    assert result.attempts[0]["error_summary"].startswith("TransientProviderError:")
+
+
+def test_unknown_exception_surfaces_unchanged() -> None:
+    """Unknown provider exceptions propagate without wrapping or relabelling."""
+    error = RuntimeError("synthetic unknown failure")
+    gateway = _gateway_with(MockProvider(raise_on_call=error))
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert raised.value is error
+
+
+def test_missing_provider_is_reported_as_skipped_before_fallback() -> None:
+    """Providers without configured keys appear in fallback diagnostics."""
+    backup = MockProvider(fixed_output="backup")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"backup": backup},
+        fallback_chains={task.value: ["missing", "backup"] for task in TaskKind},
+        daily_caps={"backup": 100},
+        skipped_providers={"missing": "no API key configured"},
+        provider_models={"missing": "some-model"},
+    )
+
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.attempts[0] == {
+        "provider": "missing",
+        "model": "some-model",
+        "outcome": "skipped",
+        "error_summary": "skipped: no API key configured",
+    }
 
 
 # ── Daily cap ─────────────────────────────────────────────────────────────────
@@ -126,6 +302,7 @@ def test_gateway_respects_daily_cap() -> None:
     )
     result = gw.generate(TaskKind.converse, _simple_messages())
     assert result.provider == "backup"
+    assert result.attempts[0]["error_summary"] == "skipped: daily cap reached"
 
 
 def test_daily_cap_after_n_calls() -> None:
