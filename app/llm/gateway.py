@@ -31,6 +31,7 @@ from app.llm.providers import (
     AuthenticationError,
     BadRequestError,
     BaseProvider,
+    BillingOrQuota,
     GeminiProvider,
     LLMResult,
     MockProvider,
@@ -52,6 +53,10 @@ T = TypeVar("T", bound=BaseModel)
 
 class GatewayExhaustedError(Exception):
     """All providers in the fallback chain failed."""
+
+    def __init__(self, message: str, attempts: list[ProviderAttempt] | None = None) -> None:
+        super().__init__(message)
+        self.attempts = attempts or []
 
 
 class StructuredOutputError(Exception):
@@ -161,6 +166,12 @@ class _UsageCounter:
 _usage = _UsageCounter()
 _PROCESS_DISABLED_PROVIDERS: dict[str, str] = {}
 _PROCESS_DISABLED_LOCK = Lock()
+
+
+def reset_process_disabled_providers() -> None:
+    """Clear process-disabled providers (primarily for tests)."""
+    with _PROCESS_DISABLED_LOCK:
+        _PROCESS_DISABLED_PROVIDERS.clear()
 
 
 # ── Gateway ───────────────────────────────────────────────────────────────────
@@ -406,7 +417,8 @@ class LLMGateway:
         ]
         raise GatewayExhaustedError(
             f"All providers failed for task={task.value}. "
-            f"Attempts: {'; '.join(errors) if errors else 'no providers configured'}"
+            f"Attempts: {'; '.join(errors) if errors else 'no providers configured'}",
+            attempts=attempts,
         )
 
     # ── Filters ───────────────────────────────────────────────────────────────
@@ -450,7 +462,7 @@ class LLMGateway:
         Return the result and diagnostic attempt, or a failed attempt for fallback.
         """
         max_retries = max(1, self._max_retries)
-        last_error: ProviderError | None = None
+        last_error: Exception | None = None
         for attempt_index in range(max_retries):
             if not self._usage_counter.claim(provider_name, self._caps.get(provider_name)):
                 summary = "skipped: daily cap reached"
@@ -476,6 +488,18 @@ class LLMGateway:
                 self._set_cooldown(provider_name)
                 summary = self._exception_summary(exc)
                 return None, self._attempt(provider_name, model, "failed", summary)
+            except BillingOrQuota as exc:
+                self._disable_provider(
+                    provider_name,
+                    reason="billing or quota exhausted (provider disabled)",
+                )
+                summary = self._exception_summary(exc)
+                logger.warning(
+                    "Provider '%s' disabled after a billing or quota failure: %s",
+                    provider_name,
+                    summary,
+                )
+                return None, self._attempt(provider_name, model, "failed", summary)
             except AuthenticationError as exc:
                 self._disable_provider(provider_name)
                 summary = self._exception_summary(exc)
@@ -489,6 +513,18 @@ class LLMGateway:
                 summary = self._exception_summary(exc)
                 return None, self._attempt(provider_name, model, "failed", summary)
             except ProviderError as exc:
+                if exc.status == 402 or isinstance(exc, BillingOrQuota):
+                    self._disable_provider(
+                        provider_name,
+                        reason="billing or quota exhausted (provider disabled)",
+                    )
+                    summary = self._exception_summary(exc)
+                    logger.warning(
+                        "Provider '%s' disabled after a billing or quota failure: %s",
+                        provider_name,
+                        summary,
+                    )
+                    return None, self._attempt(provider_name, model, "failed", summary)
                 if exc.status in (401, 403):
                     self._disable_provider(provider_name)
                     summary = self._exception_summary(exc)
@@ -510,7 +546,13 @@ class LLMGateway:
                 if not isinstance(exc, TransientProviderError) and not (
                     exc.status is not None and exc.status >= 500
                 ):
-                    raise
+                    summary = self._exception_summary(exc)
+                    logger.warning(
+                        "Provider '%s' failed with unexpected ProviderError: %s",
+                        provider_name,
+                        summary,
+                    )
+                    return None, self._attempt(provider_name, model, "failed", summary)
                 last_error = exc
                 self._retry_sleep(provider_name, exc, attempt_index, max_retries)
                 continue
@@ -518,6 +560,34 @@ class LLMGateway:
                 last_error = TransientProviderError(provider_name, None, str(exc))
                 self._retry_sleep(provider_name, last_error, attempt_index, max_retries)
                 continue
+            except Exception as exc:
+                status = getattr(exc, "status_code", getattr(exc, "code", None))
+                msg_lower = str(exc).lower()
+                if (
+                    status == 402
+                    or "payment_required" in msg_lower
+                    or "payment required" in msg_lower
+                    or "insufficient_quota" in msg_lower
+                    or (status in (400, 403) and ("quota" in msg_lower or "billing" in msg_lower))
+                ):
+                    self._disable_provider(
+                        provider_name,
+                        reason="billing or quota exhausted (provider disabled)",
+                    )
+                    summary = self._exception_summary(exc)
+                    logger.warning(
+                        "Provider '%s' disabled after a billing or quota failure: %s",
+                        provider_name,
+                        summary,
+                    )
+                    return None, self._attempt(provider_name, model, "failed", summary)
+                summary = self._exception_summary(exc)
+                logger.warning(
+                    "Provider '%s' failed with unexpected exception: %s",
+                    provider_name,
+                    summary,
+                )
+                return None, self._attempt(provider_name, model, "failed", summary)
 
         if last_error is None:
             raise RuntimeError("Provider retry loop ended without a result or failure.")
@@ -528,7 +598,7 @@ class LLMGateway:
     def _retry_sleep(
         self,
         provider_name: str,
-        error: ProviderError,
+        error: Exception,
         attempt_index: int,
         max_retries: int,
     ) -> None:
@@ -547,12 +617,13 @@ class LLMGateway:
         time.sleep(wait)
 
     @staticmethod
-    def _disable_provider(provider_name: str) -> None:
-        """Disable an authentication-failing provider for this process."""
+    def _disable_provider(
+        provider_name: str,
+        reason: str = "authentication failure (provider disabled)",
+    ) -> None:
+        """Disable a failing provider for this process."""
         with _PROCESS_DISABLED_LOCK:
-            _PROCESS_DISABLED_PROVIDERS[provider_name] = (
-                "authentication failure (provider disabled)"
-            )
+            _PROCESS_DISABLED_PROVIDERS[provider_name] = reason
 
     def _exception_summary(self, error: Exception) -> str:
         """Format an exception type and message with configured keys redacted."""

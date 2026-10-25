@@ -6,7 +6,55 @@
 ---
 
 ## Current Branch
-`layer-0-foundation`
+`fix-gateway-fallthrough`
+
+---
+
+## Session: 2026-10-26 — Gateway fallthrough resilience and error classification
+
+### Done
+- Replaced the rule "unknown exceptions surface unchanged": unexpected exceptions from any provider
+  now log a warning, are recorded in `attempts` (`{provider, model, outcome: "failed", error_summary: "<Type>: <redacted message>"}`),
+  and continue fallback to the next provider instead of terminating the chain.
+- Added `BillingOrQuota` error class (`app/llm/providers.py`), classifying HTTP 402 and quota/billing
+  exhaustion errors. The gateway now disables that provider process-wide, logs a clear warning, and
+  falls through to the next provider.
+- `GatewayExhaustedError` now preserves all provider attempts both in its message and as a structured
+  `.attempts` attribute.
+- Re-architected `scripts/check_models.py` to use `google-genai` and `openai` clients directly instead
+  of raw `urllib` HTTP calls. This resolves Cloudflare HTTP 403 / Error 1010 blocks for Groq and
+  Cerebras catalogs. Default output now prints warnings only; complete model lists are displayed
+  with `--verbose`.
+- Fixed pre-existing Ruff `UP017` in `app/main.py` by using `datetime.now(UTC)` and confirmed all checks pass.
+- Added comprehensive unit tests in `tests/test_gateway.py` covering unknown exception fallthrough,
+  HTTP 402 provider disabling, and all-fail attempts listing.
+- Observed provider usability:
+  - **Groq is currently unusable on this account**: Configured model `llama-3.1-8b-instant` returns
+    HTTP 404 `model_not_found`. The catalog accessible to this key contains only specialized models
+    (whisper, prompt-guard, orpheus, allam) and no general llama chat models.
+  - **Cerebras is currently unusable on this account**: Model `qwen-3.8-27b` is present in catalog,
+    but completion calls fail with HTTP 402 `payment_required` ("Payment required to access this resource.
+    Visit your billing tab."), indicating exhausted credits / billing setup required.
+  - **Gemini**: Serving successfully using `gemini-3-flash-preview` (`gemini-2.5-flash` returned HTTP 404
+    indicating deprecation for new users).
+
+### Next
+1. Start **Layer 1** only: implement `app/safety/sentinel.py` as the rule-based Safety Sentinel
+   returning `SafetyResult`; add focused tests before wiring any LLM path.
+
+### Known Issues
+- Groq and Cerebras are currently unusable with this account's credentials due to missing models / billing limits.
+- Mistral and OpenRouter have no credentials configured in this environment.
+- Layer 1 safety and emotion processing are not implemented; Layer 0 exposes only `/health`.
+- The optional `[rag]` dependency extra has not been installed or validated.
+
+### Verification
+- `pytest -q`: 72 passed.
+- `ruff check app/main.py app/llm/ scripts/check_models.py tests/test_gateway.py`: all checks passed.
+- `python -m scripts.check_models`: warned on groq configured model missing, no Cloudflare 403 blocks.
+- `python -m scripts.check_models --verbose`: displayed live catalogs for gemini (60), groq (11), cerebras (2).
+- `python -m scripts.smoke_llm`: passed via fallback to gemini.
+- `python -m scripts.smoke_llm --provider cerebras`: cleanly disabled cerebras after HTTP 402 and reported attempt.
 
 ---
 

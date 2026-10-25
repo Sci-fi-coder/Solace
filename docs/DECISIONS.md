@@ -120,3 +120,23 @@ arguments.
 credential values or spending multiple calls per smoke run.
 **Alternative:** Log raw configuration and run every task in each smoke test. Rejected for
 credential safety and avoidable usage.
+
+---
+
+## 2026-10-26 — Gateway Fallthrough and Resilience
+
+### D-018: Catch unknown provider exceptions and continue the fallback chain
+**Decision:** Catch unhandled/unexpected provider exceptions in the gateway fallback loop, log a warning, record them in `attempts` (`{provider, model, outcome: "failed", error_summary: "<Type>: <redacted message>"}`), and continue to the next provider. If all providers fail, `GatewayExhaustedError` raises with the full history of all attempts.
+**Rationale:** This replaces the earlier D-014 rule ("unknown exceptions surface unchanged"). An unhandled exception or non-standard status code (such as a 402 or client status error) from one provider should not kill the entire fallback chain when healthy fallback providers are available.
+**Alternative:** Surface unknown exceptions immediately. Rejected because a single odd failure halts the entire session rather than falling through.
+
+### D-019: Classify 402 and quota/billing errors as BillingOrQuota and disable provider
+**Decision:** Map HTTP 402 and quota/billing errors to a dedicated `BillingOrQuota(ProviderError)` exception class. When encountered, disable the provider process-wide and fall through to the next provider.
+**Rationale:** Account credit exhaustion and payment requirements are persistent conditions that do not resolve with backoff or cooldowns. Disabling the provider process-wide avoids repeatedly hammering a known-exhausted account on later turns while clearly reporting the cause.
+**Alternative:** Treat 402 as a transient error or rate limit. Rejected because 402 requires manual billing/account intervention and retrying wastes time and latency.
+
+### D-020: Use provider SDKs / OpenAI client for model catalog checking
+**Decision:** In `scripts/check_models.py`, use the official `google-genai` and `openai` clients to retrieve model catalogs rather than raw `urllib` HTTP requests. Default output displays warnings only, reserving full catalog dumps for `--verbose`.
+**Rationale:** Raw HTTP requests triggered Cloudflare HTTP 403 / Error 1010 on Groq and Cerebras endpoints in this environment. The SDK clients handle TLS and User-Agent headers properly. Defaulting to warning-only output keeps smoke CLI runs clean and uncluttered.
+**Alternative:** Header spoofing with raw HTTP clients. Rejected as fragile when official client libraries are already installed dependencies.
+

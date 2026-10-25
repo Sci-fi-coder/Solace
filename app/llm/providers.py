@@ -65,6 +65,13 @@ class RateLimitError(ProviderError):
     """Raised on HTTP 429 — triggers cooldown in the gateway."""
 
 
+class BillingOrQuota(ProviderError):
+    """Raised when provider billing, payment, or account quota is exhausted (e.g. HTTP 402)."""
+
+
+BillingOrQuotaError = BillingOrQuota
+
+
 class AuthenticationError(ProviderError):
     """Raised when provider credentials are missing, invalid, or unauthorized."""
 
@@ -97,12 +104,24 @@ def _classified_exception(
 ) -> ProviderError | None:
     """Map recognized provider failures to gateway resilience categories."""
     message = str(exc)
-    details = f"{getattr(exc, 'code', '')} {message}".lower()
+    code = getattr(exc, "code", "")
+    error_type = getattr(exc, "type", "")
+    details = f"{code} {error_type} {message}".lower()
 
+    if (
+        status == 402
+        or "payment_required" in details
+        or "payment required" in details
+        or "insufficient_quota" in details
+        or "credit balance" in details
+        or "out of credits" in details
+        or (status in (400, 403) and ("quota" in details or "billing" in details))
+        or ("billing" in details and any(w in details for w in ("disabled", "required", "visit", "tab")))
+    ):
+        return BillingOrQuota(provider, status or 402, message)
     if (
         status == 429
         or "resource_exhausted" in details
-        or (status == 403 and "quota" in details)
     ):
         return RateLimitError(provider, status or 429, message)
     if status in (401, 403):
@@ -249,7 +268,7 @@ class GeminiProvider(BaseProvider):
         match = re.search(
             r"\b([45]\d{2})\s+"
             r"(?:INVALID_ARGUMENT|NOT_FOUND|UNAUTHENTICATED|PERMISSION_DENIED|"
-            r"RESOURCE_EXHAUSTED|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED)\b",
+            r"RESOURCE_EXHAUSTED|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|PAYMENT_REQUIRED)\b",
             str(exc),
             re.IGNORECASE,
         )
