@@ -64,12 +64,30 @@ class ProviderError(Exception):
 class RateLimitError(ProviderError):
     """Raised on HTTP 429 — triggers cooldown in the gateway."""
 
+    def __init__(
+        self,
+        provider: str,
+        status: int | None,
+        message: str,
+        *,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(provider, status, message)
+        self.retry_after = retry_after
+
 
 class BillingOrQuota(ProviderError):
     """Raised when provider billing, payment, or account quota is exhausted (e.g. HTTP 402)."""
 
 
 BillingOrQuotaError = BillingOrQuota
+
+
+class EmptyResponseError(ProviderError):
+    """Raised when a provider returns an empty response (e.g. reasoning token budget exhausted)."""
+
+
+EmptyResponse = EmptyResponseError
 
 
 class AuthenticationError(ProviderError):
@@ -95,6 +113,41 @@ class ProviderAttempt(TypedDict):
     model: str
     outcome: str
     error_summary: str
+
+
+def extract_retry_after(exc: Exception) -> float | None:
+    """Extract retry-after duration in seconds from response headers or error message."""
+    import re
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        headers = getattr(response, "headers", {}) or {}
+        header_val = headers.get("retry-after") or headers.get("Retry-After")
+        if header_val is not None:
+            try:
+                return float(header_val)
+            except (ValueError, TypeError):
+                pass
+        header_val_ms = headers.get("retry-after-ms") or headers.get("Retry-After-Ms")
+        if header_val_ms is not None:
+            try:
+                return float(header_val_ms) / 1000.0
+            except (ValueError, TypeError):
+                pass
+
+    msg = str(exc)
+    match = re.search(
+        r"(?:try again in|retry[-_ ]after[:\s]+|wait\s+)(\d+(?:\.\d+)?)\s*(s|sec|seconds|ms)?",
+        msg,
+        re.IGNORECASE,
+    )
+    if match:
+        val = float(match.group(1))
+        unit = (match.group(2) or "").lower()
+        if unit == "ms":
+            return val / 1000.0
+        return val
+    return None
 
 
 def _classified_exception(
@@ -123,7 +176,8 @@ def _classified_exception(
         status == 429
         or "resource_exhausted" in details
     ):
-        return RateLimitError(provider, status or 429, message)
+        retry_after = extract_retry_after(exc)
+        return RateLimitError(provider, status or 429, message, retry_after=retry_after)
     if status in (401, 403):
         return AuthenticationError(provider, status, message)
     if status == 404 or any(
@@ -157,6 +211,7 @@ class BaseProvider(ABC):
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         """Send messages to the provider and return an LLMResult.
 
@@ -167,6 +222,7 @@ class BaseProvider(ABC):
             response_format: Optional dict for requesting structured output
                              (e.g. {"type": "json_object"}).
             model: Optional per-call model override.
+            reasoning_effort: Optional reasoning effort ('low' | 'medium' | 'high').
 
         Raises:
             RateLimitError: On HTTP 429.
@@ -182,7 +238,7 @@ class GeminiProvider(BaseProvider):
 
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash") -> None:
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite") -> None:
         if not api_key:
             raise ValueError("GeminiProvider requires a non-empty api_key.")
         self._model = model
@@ -204,6 +260,7 @@ class GeminiProvider(BaseProvider):
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         """Call Gemini generate_content and return LLMResult."""
         from google.genai import types  # type: ignore[import-untyped]
@@ -302,11 +359,15 @@ class OpenAICompatProvider(BaseProvider):
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         """Call the OpenAI-compatible endpoint and return LLMResult."""
+        import re
         import openai
 
         effective_model = model or self._model
+        is_gpt_oss = effective_model.startswith("openai/gpt-oss")
+
         kwargs: dict[str, Any] = {
             "model": effective_model,
             "messages": messages,
@@ -315,24 +376,98 @@ class OpenAICompatProvider(BaseProvider):
         }
         if response_format:
             kwargs["response_format"] = response_format
+        if is_gpt_oss and reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
 
         t0 = time.perf_counter()
+
+        def _execute_create(params: dict[str, Any]) -> Any:
+            try:
+                return self._client.chat.completions.create(**params)
+            except openai.RateLimitError as exc:
+                retry_after = extract_retry_after(exc)
+                raise RateLimitError(self.name, 429, str(exc), retry_after=retry_after) from exc
+            except openai.APITimeoutError as exc:
+                raise TransientProviderError(self.name, None, str(exc)) from exc
+            except openai.APIConnectionError as exc:
+                raise TransientProviderError(self.name, None, str(exc)) from exc
+            except openai.APIStatusError as exc:
+                mapped = _classified_exception(self.name, exc, exc.status_code)
+                if mapped is None:
+                    raise
+                raise mapped from exc
+
         try:
-            response = self._client.chat.completions.create(**kwargs)
-        except openai.RateLimitError as exc:
-            raise RateLimitError(self.name, 429, str(exc)) from exc
-        except openai.APITimeoutError as exc:
-            raise TransientProviderError(self.name, None, str(exc)) from exc
-        except openai.APIConnectionError as exc:
-            raise TransientProviderError(self.name, None, str(exc)) from exc
-        except openai.APIStatusError as exc:
-            mapped = _classified_exception(self.name, exc, exc.status_code)
-            if mapped is None:
+            response = _execute_create(kwargs)
+        except Exception as exc:
+            # If the provider rejected the reasoning_effort parameter, retry once without it and log that
+            if is_gpt_oss and "reasoning_effort" in kwargs:
+                err_str = str(exc).lower()
+                status = getattr(
+                    exc, "status", getattr(exc, "status_code", getattr(exc, "code", None))
+                )
+                if "reasoning_effort" in err_str or (
+                    status == 400
+                    and any(
+                        w in err_str
+                        for w in (
+                            "unrecognized",
+                            "extra",
+                            "unexpected",
+                            "parameter",
+                            "unknown",
+                            "argument",
+                        )
+                    )
+                ):
+                    logger.warning(
+                        "Provider '%s' rejected reasoning_effort parameter; retrying once without it.",
+                        self.name,
+                    )
+                    kwargs.pop("reasoning_effort", None)
+                    response = _execute_create(kwargs)
+                else:
+                    raise
+            else:
                 raise
-            raise mapped from exc
+
+        def _extract_content(res: Any) -> tuple[str, str | None]:
+            if not getattr(res, "choices", None):
+                return "", None
+            choice_obj = res.choices[0]
+            raw = choice_obj.message.content or ""
+            # Strip reasoning tags like <think>...</think> if present in message content
+            stripped = re.sub(r"(?s)<think>.*?</think>", "", raw).strip()
+            return stripped, getattr(choice_obj, "finish_reason", None)
+
+        text, finish_reason = _extract_content(response)
+
+        # If the reply is empty with finish_reason "length", retry once with a larger max_tokens
+        # and then raise a clear EmptyResponse error that falls through to the next provider.
+        if is_gpt_oss and not text and finish_reason == "length":
+            larger_max_tokens = max(max_tokens * 2, max_tokens + 1000)
+            logger.warning(
+                "Provider '%s' returned empty content with finish_reason='length' for model '%s'. "
+                "Retrying once with larger max_tokens=%d.",
+                self.name,
+                effective_model,
+                larger_max_tokens,
+            )
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["max_tokens"] = larger_max_tokens
+            response2 = _execute_create(retry_kwargs)
+            text2, _ = _extract_content(response2)
+            if not text2:
+                raise EmptyResponseError(
+                    self.name,
+                    None,
+                    f"Empty response from {effective_model} with finish_reason='length' "
+                    f"after retry with max_tokens={larger_max_tokens}.",
+                )
+            response = response2
+            text = text2
 
         latency_ms = (time.perf_counter() - t0) * 1000
-        text = response.choices[0].message.content or ""
         usage = None
         if response.usage:
             usage = {
@@ -403,6 +538,7 @@ class MockProvider(BaseProvider):
         max_tokens: int = 800,
         response_format: dict[str, Any] | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         """Return scripted output or raise the configured exception."""
         if self._raise is not None:

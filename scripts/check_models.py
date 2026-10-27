@@ -70,9 +70,17 @@ def check_models(
             output(", ".join(models) if models else "(none returned)")
 
         configured_model = str(provider_config["model"])
+        field = Settings.model_fields.get(f"{name}_model")
+        default_model = str(field.default) if field and field.default is not None else None
+
         if configured_model not in models:
             output(
                 f"WARNING {name}: configured model {configured_model!r} "
+                "is not in the provider catalog."
+            )
+        if default_model and default_model != configured_model and default_model not in models:
+            output(
+                f"WARNING {name}: default model {default_model!r} "
                 "is not in the provider catalog."
             )
     return catalogs

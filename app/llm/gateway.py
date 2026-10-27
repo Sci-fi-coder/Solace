@@ -32,6 +32,8 @@ from app.llm.providers import (
     BadRequestError,
     BaseProvider,
     BillingOrQuota,
+    EmptyResponse,
+    EmptyResponseError,
     GeminiProvider,
     LLMResult,
     MockProvider,
@@ -41,6 +43,7 @@ from app.llm.providers import (
     ProviderError,
     RateLimitError,
     TransientProviderError,
+    extract_retry_after,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,6 +204,7 @@ class LLMGateway:
         provider_models: dict[str, str] | None = None,
         skipped_providers: dict[str, str] | None = None,
         secrets: list[str] | None = None,
+        task_reasoning_efforts: dict[str, str] | None = None,
     ) -> None:
         """
         Args:
@@ -212,6 +216,7 @@ class LLMGateway:
             backoff_base: Base delay (seconds) for exponential backoff.
             pre_send_filter: List of callables applied to messages before dispatch.
             usage_counter: Optional daily usage counter; defaults to an isolated counter.
+            task_reasoning_efforts: Optional per-task reasoning effort overrides.
         """
         self._providers = providers
         self._chains = fallback_chains
@@ -224,6 +229,7 @@ class LLMGateway:
         self._provider_models = provider_models or {}
         self._skipped_providers = skipped_providers or {}
         self._secrets = [secret for secret in (secrets or []) if secret]
+        self._task_reasoning_efforts = task_reasoning_efforts or {}
         # provider_name -> UTC timestamp when cooldown expires
         self._cooldown_until: dict[str, float] = {}
 
@@ -248,6 +254,10 @@ class LLMGateway:
             cfg = settings.provider_config(name)
             key = cfg["api_key"]
             provider_models[name] = cfg["model"]
+            if not cfg.get("enabled", True):
+                skipped_providers[name] = "provider disabled in configuration"
+                logger.debug("Provider '%s' disabled in configuration.", name)
+                continue
             if not key:
                 skipped_providers[name] = "no API key configured"
                 logger.warning("Provider '%s' skipped: no API key configured.", name)
@@ -286,6 +296,9 @@ class LLMGateway:
             name: settings.provider_config(name)["daily_cap"]
             for name in all_provider_names
         }
+        task_reasoning_efforts = {
+            tk.value: settings.get_reasoning_effort(tk.value) for tk in TaskKind
+        }
 
         gw = cls(
             providers=providers,
@@ -297,6 +310,7 @@ class LLMGateway:
             provider_models=provider_models,
             skipped_providers=skipped_providers,
             secrets=secrets,
+            task_reasoning_efforts=task_reasoning_efforts,
         )
         _usage.init_db(engine)
         gw._usage_counter = _usage
@@ -375,6 +389,10 @@ class LLMGateway:
             if self._is_in_cooldown(provider_name):
                 attempts.append(self._skip_attempt(provider_name, model, "cooldown"))
                 continue
+            reasoning_effort = self._task_reasoning_efforts.get(
+                task.value,
+                "medium" if task == TaskKind.converse else "low",
+            )
             result, attempt = self._call_with_retry(
                 provider_name,
                 provider,
@@ -383,6 +401,7 @@ class LLMGateway:
                 max_tokens,
                 response_format,
                 model,
+                reasoning_effort=reasoning_effort,
             )
             if result is None:
                 attempts.append(attempt)
@@ -441,10 +460,23 @@ class LLMGateway:
         until = self._cooldown_until.get(provider, 0.0)
         return time.monotonic() < until
 
-    def _set_cooldown(self, provider: str) -> None:
-        self._cooldown_until[provider] = time.monotonic() + self._cooldown_s
+    def _set_cooldown(
+        self,
+        provider: str,
+        cooldown_s: float | None = None,
+        reason: str = "rate limit",
+    ) -> None:
+        duration = (
+            cooldown_s
+            if cooldown_s is not None and cooldown_s > 0
+            else float(self._cooldown_s)
+        )
+        self._cooldown_until[provider] = time.monotonic() + duration
         logger.warning(
-            "Provider '%s' rate-limited. Cooling down for %ds.", provider, self._cooldown_s
+            "Provider '%s' rate-limited (%s). Cooling down for %.1fs.",
+            provider,
+            reason,
+            duration,
         )
 
     def _call_with_retry(
@@ -456,6 +488,7 @@ class LLMGateway:
         max_tokens: int,
         response_format: dict[str, Any] | None,
         model: str,
+        reasoning_effort: str | None = None,
     ) -> tuple[LLMResult | None, ProviderAttempt]:
         """Attempt provider call with exponential backoff + jitter.
 
@@ -482,10 +515,14 @@ class LLMGateway:
                 }
                 if model:
                     kwargs["model"] = model
+                if reasoning_effort:
+                    kwargs["reasoning_effort"] = reasoning_effort
                 result = provider.generate(messages, **kwargs)
                 return result, self._attempt(provider_name, model or result.model, "served", "")
             except RateLimitError as exc:
-                self._set_cooldown(provider_name)
+                cooldown = getattr(exc, "retry_after", None) or extract_retry_after(exc)
+                reason = "Retry-After hint" if cooldown is not None else "rate limit"
+                self._set_cooldown(provider_name, cooldown_s=cooldown, reason=reason)
                 summary = self._exception_summary(exc)
                 return None, self._attempt(provider_name, model, "failed", summary)
             except BillingOrQuota as exc:
@@ -535,7 +572,9 @@ class LLMGateway:
                     )
                     return None, self._attempt(provider_name, model, "failed", summary)
                 if exc.status == 429:
-                    self._set_cooldown(provider_name)
+                    cooldown = getattr(exc, "retry_after", None) or extract_retry_after(exc)
+                    reason = "Retry-After hint" if cooldown is not None else "rate limit"
+                    self._set_cooldown(provider_name, cooldown_s=cooldown, reason=reason)
                     return None, self._attempt(
                         provider_name, model, "failed", self._exception_summary(exc)
                     )
@@ -580,6 +619,12 @@ class LLMGateway:
                         provider_name,
                         summary,
                     )
+                    return None, self._attempt(provider_name, model, "failed", summary)
+                if status == 429 or "rate_limit" in msg_lower or "resource_exhausted" in msg_lower:
+                    cooldown = extract_retry_after(exc)
+                    reason = "Retry-After hint" if cooldown is not None else "rate limit"
+                    self._set_cooldown(provider_name, cooldown_s=cooldown, reason=reason)
+                    summary = self._exception_summary(exc)
                     return None, self._attempt(provider_name, model, "failed", summary)
                 summary = self._exception_summary(exc)
                 logger.warning(
