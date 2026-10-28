@@ -153,7 +153,9 @@ def test_empty_length_response_retries_with_larger_token_limit() -> None:
     assert len(completions.calls) == 2
 
 
-def test_empty_length_response_error_falls_through_to_next_provider() -> None:
+def test_empty_length_response_error_falls_through_to_next_provider(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """A second empty length-limited response raises and falls through in the gateway."""
     provider, completions = _provider(
         _response("", finish_reason="length"),
@@ -175,3 +177,4 @@ def test_empty_length_response_error_falls_through_to_next_provider() -> None:
     assert result.text == "backup answer"
     assert "EmptyResponseError" in result.attempts[0]["error_summary"]
     assert len(completions.calls) == 2
+    assert "unexpected ProviderError" not in caplog.text

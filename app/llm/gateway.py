@@ -32,7 +32,6 @@ from app.llm.providers import (
     BadRequestError,
     BaseProvider,
     BillingOrQuota,
-    EmptyResponse,
     EmptyResponseError,
     GeminiProvider,
     LLMResult,
@@ -546,7 +545,7 @@ class LLMGateway:
                     summary,
                 )
                 return None, self._attempt(provider_name, model, "failed", summary)
-            except (ModelNotFoundError, BadRequestError) as exc:
+            except (ModelNotFoundError, BadRequestError, EmptyResponseError) as exc:
                 summary = self._exception_summary(exc)
                 return None, self._attempt(provider_name, model, "failed", summary)
             except ProviderError as exc:
