@@ -10,6 +10,30 @@
 
 ---
 
+## Session: 2026-10-28 — Provider handling audit
+
+### Test-history clarification
+- The `b0a3364` test diff confirms that `test_unknown_exception_surfaces_unchanged` was
+  replaced by `test_unknown_exception_falls_through_and_appears_in_attempts`. Unknown provider
+  failures now continue through fallback instead of propagating unchanged. The same change added
+  `test_billing_or_quota_402_disables_provider` and
+  `test_all_fail_error_contains_every_attempt`, so three tests were added and one was removed
+  (net +2, matching the prior 70-to-72 count).
+- Added `tests/test_providers.py` coverage for GPT-OSS reasoning effort, rejected-parameter
+  retry, excluding reasoning text, empty length-limited replies, and Retry-After handling.
+  Focused provider tests passed during this session.
+
+### Next
+- Complete the remaining configuration, catalog, secret-hygiene, and smoke-test verification.
+- Update this handoff with final suite results and known provider limitations.
+
+### Known issues
+- A full-repository Ruff run currently reports 29 violations; cleanup remains required.
+- A `.env` model override selects the stale Groq model, although the code default has been
+  changed. The dotenv file has not been opened or modified.
+
+---
+
 ## Session: 2026-10-26 — Gateway fallthrough resilience and error classification
 
 ### Done
