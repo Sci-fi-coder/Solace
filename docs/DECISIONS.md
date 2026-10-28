@@ -149,3 +149,7 @@ credential safety and avoidable usage.
 - `gemini-2.5-flash-lite`: **FAIL**, HTTP 404 `NOT_FOUND`; exact API message: `This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/docs/get-started).`
 - `gemini-3.1-flash-lite`: **PASS**, HTTP 200; provider `gemini` returned the exact synthetic reply `Smoke test OK.` in 3779 ms.
 **Rationale:** Catalog visibility did not establish that the account could generate with the older models. The requested live synthetic generation test resolved that conflict; the third candidate is the first available and replying model.
+
+### D-022: Keep Groq behind Gemini for small tasks
+**Decision:** Use `openai/gpt-oss-20b` as the Groq default and retain `openai/gpt-oss-120b` only as a documented optional alternative. Converse remains Gemini-first. Classify, judge, and extract try the verified `gemini-3.1-flash-lite` first and Groq GPT-OSS 20B second.
+**Rationale:** The Gemini Flash Lite candidate passed a real synthetic generation call. Groq's free-tier token-per-minute limit makes it a fallback for small calls rather than the primary route. No default chain includes Cerebras.

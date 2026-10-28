@@ -130,15 +130,15 @@ class Settings(BaseSettings):
         description="Comma-separated provider order for 'converse' tasks.",
     )
     fallback_classify: str = Field(
-        default="groq,gemini,mistral,openrouter",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,mistral,openrouter",
         description="Comma-separated provider order for 'classify' tasks.",
     )
     fallback_judge: str = Field(
-        default="gemini,groq,openrouter,mistral",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,openrouter,mistral",
         description="Comma-separated provider order for 'judge' tasks.",
     )
     fallback_extract: str = Field(
-        default="groq,gemini,mistral,openrouter",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,mistral,openrouter",
         description="Comma-separated provider order for 'extract' tasks.",
     )
 
