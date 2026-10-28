@@ -6,7 +6,7 @@ Layer 0: health endpoint only.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 
@@ -35,5 +35,5 @@ async def health() -> dict[str, str]:
     return {
         "status": "ok",
         "environment": settings.environment,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }

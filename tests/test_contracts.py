@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
-from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from app.contracts import (
     ConductorDecision,
     CriticVerdict,
+    EmotionalState,
     EmotionHypothesis,
     EmotionReading,
-    EmotionalState,
     Message,
     Phase,
-    RetrievedItem,
     Role,
     SafetyLevel,
     SafetyResult,
@@ -25,7 +25,6 @@ from app.contracts import (
     UserProfile,
 )
 
-
 # ── Enum sanity ───────────────────────────────────────────────────────────────
 
 
@@ -35,6 +34,7 @@ def test_role_values() -> None:
     assert Role.mentor == "mentor"
     assert Role.teacher == "teacher"
     assert Role.peer == "peer"
+    assert str(Role.counsellor) == "Role.counsellor"
 
 
 def test_phase_values() -> None:

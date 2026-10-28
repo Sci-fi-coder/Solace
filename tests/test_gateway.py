@@ -16,6 +16,7 @@ from app.llm.gateway import (
 )
 from app.llm.providers import (
     AuthenticationError,
+    BillingOrQuota,
     LLMResult,
     MockProvider,
     ModelNotFoundError,
@@ -249,15 +250,94 @@ def test_timeout_retries_then_falls_through() -> None:
     assert result.attempts[0]["error_summary"].startswith("TransientProviderError:")
 
 
-def test_unknown_exception_surfaces_unchanged() -> None:
-    """Unknown provider exceptions propagate without wrapping or relabelling."""
-    error = RuntimeError("synthetic unknown failure")
-    gateway = _gateway_with(MockProvider(raise_on_call=error))
+def test_unknown_exception_falls_through_and_appears_in_attempts() -> None:
+    """Unknown provider exceptions do not abort fallback and appear in attempts."""
+    unknown = _FailingProvider(RuntimeError("synthetic unknown failure"), "unknown")
+    backup = MockProvider(fixed_output="backup reply")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"unknown": unknown, "backup": backup},
+        fallback_chains={task.value: ["unknown", "backup"] for task in TaskKind},
+        daily_caps={"unknown": 100, "backup": 100},
+        max_retries=2,
+        backoff_base=0.0,
+    )
 
-    with pytest.raises(RuntimeError) as raised:
+    result = gateway.generate(TaskKind.converse, _simple_messages())
+
+    assert result.provider == "backup"
+    assert result.text == "backup reply"
+    assert unknown.calls == 1
+    assert len(result.attempts) == 1
+    assert result.attempts[0]["provider"] == "unknown"
+    assert result.attempts[0]["outcome"] == "failed"
+    assert "RuntimeError: synthetic unknown failure" in result.attempts[0]["error_summary"]
+
+
+def test_billing_or_quota_402_disables_provider() -> None:
+    """402 Payment Required classifies as BillingOrQuota, disables provider process-wide, and falls through."""
+    billing = _FailingProvider(
+        BillingOrQuota("cerebras", 402, "Payment required to access this resource."),
+        "cerebras",
+    )
+    backup = MockProvider(fixed_output="backup reply")
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"cerebras": billing, "backup": backup},
+        fallback_chains={task.value: ["cerebras", "backup"] for task in TaskKind},
+        daily_caps={"cerebras": 100, "backup": 100},
+        max_retries=3,
+        backoff_base=0.0,
+    )
+
+    first = gateway.generate(TaskKind.converse, _simple_messages())
+    assert first.provider == "backup"
+    assert billing.calls == 1
+    assert first.attempts[0]["provider"] == "cerebras"
+    assert first.attempts[0]["outcome"] == "failed"
+    assert "BillingOrQuota:" in first.attempts[0]["error_summary"]
+    assert "Payment required" in first.attempts[0]["error_summary"]
+
+    another_gateway = LLMGateway(
+        providers={"cerebras": billing, "backup": backup},
+        fallback_chains={task.value: ["cerebras", "backup"] for task in TaskKind},
+        daily_caps={"cerebras": 100, "backup": 100},
+        max_retries=3,
+        backoff_base=0.0,
+    )
+    second = another_gateway.generate(TaskKind.converse, _simple_messages())
+    assert second.provider == "backup"
+    assert billing.calls == 1  # Not called again because it was disabled process-wide
+    assert second.attempts[0]["provider"] == "cerebras"
+    assert second.attempts[0]["outcome"] == "skipped"
+    assert second.attempts[0]["error_summary"] == (
+        "skipped: billing or quota exhausted (provider disabled)"
+    )
+
+
+def test_all_fail_error_contains_every_attempt() -> None:
+    """When all providers fail, GatewayExhaustedError lists every attempt."""
+    p1 = _FailingProvider(RuntimeError("custom error 1"), "p1")
+    p2 = _FailingProvider(BillingOrQuota("p2", 402, "out of credits"), "p2")
+    gateway = LLMGateway(
+        providers={"p1": p1, "p2": p2},
+        fallback_chains={task.value: ["p1", "p2"] for task in TaskKind},
+        daily_caps={"p1": 100, "p2": 100},
+        max_retries=1,
+        backoff_base=0.0,
+    )
+
+    with pytest.raises(GatewayExhaustedError) as raised:
         gateway.generate(TaskKind.converse, _simple_messages())
 
-    assert raised.value is error
+    assert len(raised.value.attempts) == 2
+    assert raised.value.attempts[0]["provider"] == "p1"
+    assert "RuntimeError: custom error 1" in raised.value.attempts[0]["error_summary"]
+    assert raised.value.attempts[1]["provider"] == "p2"
+    assert "BillingOrQuota:" in raised.value.attempts[1]["error_summary"]
+    error_str = str(raised.value)
+    assert "p1: RuntimeError: custom error 1" in error_str
+    assert "p2: BillingOrQuota: [p2] HTTP 402: out of credits" in error_str
 
 
 def test_missing_provider_is_reported_as_skipped_before_fallback() -> None:

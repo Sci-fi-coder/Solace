@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        env_ignore_empty=True,
         case_sensitive=False,
         extra="ignore",
     )
@@ -75,32 +76,40 @@ class Settings(BaseSettings):
 
     # ── Gemini ───────────────────────────────────────────────────────────────
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_enabled: bool = True
     # Local protective caps, not claims about vendor quotas; override via *_DAILY_CAP.
     gemini_daily_cap: int = 20
 
     # ── Groq ─────────────────────────────────────────────────────────────────
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = "llama-3.1-8b-instant"
+    # Default model: openai/gpt-oss-20b (fast reasoning model).
+    # Optional alternative: openai/gpt-oss-120b (larger production reasoning model).
+    groq_model: str = "openai/gpt-oss-20b"
+    groq_enabled: bool = True
     groq_daily_cap: int = 20
 
     # ── OpenRouter ───────────────────────────────────────────────────────────
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "mistralai/mistral-small-2603"
+    openrouter_enabled: bool = True
     openrouter_daily_cap: int = 20
 
     # ── Mistral ──────────────────────────────────────────────────────────────
     mistral_api_key: str = ""
     mistral_base_url: str = "https://api.mistral.ai/v1"
     mistral_model: str = "mistral-small-latest"
+    mistral_enabled: bool = True
     mistral_daily_cap: int = 20
 
     # ── Cerebras ─────────────────────────────────────────────────────────────
     cerebras_api_key: str = ""
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
     cerebras_model: str = "qwen-3.8-27b"
+    # Disabled by default: Cerebras returns HTTP 402 Payment Required on this account.
+    cerebras_enabled: bool = False
     cerebras_daily_cap: int = 20
 
     # ── Gateway resilience ────────────────────────────────────────────────────
@@ -108,23 +117,29 @@ class Settings(BaseSettings):
     gateway_max_retries: int = 3
     gateway_backoff_base: float = 1.0
 
+    # ── Reasoning effort for OpenAI-compatible reasoning models (openai/gpt-oss) ──
+    reasoning_effort_converse: str = "medium"
+    reasoning_effort_classify: str = "low"
+    reasoning_effort_judge: str = "low"
+    reasoning_effort_extract: str = "low"
+
     # ── Fallback chains per TaskKind ─────────────────────────────────────────
     # Each entry is "<provider>/<model>" — resolved at runtime by the gateway.
-    # Override via env vars: FALLBACK_CONVERSE="groq/llama-3.1-8b-instant,gemini/gemini-2.5-flash"
+    # Note: Cerebras is omitted by default due to HTTP 402 Payment Required.
     fallback_converse: str = Field(
-        default="gemini,groq,openrouter,mistral,cerebras",
+        default="gemini,groq,openrouter,mistral",
         description="Comma-separated provider order for 'converse' tasks.",
     )
     fallback_classify: str = Field(
-        default="groq,gemini,mistral,cerebras,openrouter",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,mistral,openrouter",
         description="Comma-separated provider order for 'classify' tasks.",
     )
     fallback_judge: str = Field(
-        default="gemini,groq,openrouter,mistral,cerebras",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,openrouter,mistral",
         description="Comma-separated provider order for 'judge' tasks.",
     )
     fallback_extract: str = Field(
-        default="gemini,groq,mistral,cerebras,openrouter",
+        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,mistral,openrouter",
         description="Comma-separated provider order for 'extract' tasks.",
     )
 
@@ -133,14 +148,19 @@ class Settings(BaseSettings):
         raw = getattr(self, f"fallback_{task}", self.fallback_converse)
         return [p.strip() for p in raw.split(",") if p.strip()]
 
+    def get_reasoning_effort(self, task: str) -> str:
+        """Return the reasoning effort level ('low' | 'medium') for a task."""
+        return getattr(self, f"reasoning_effort_{task}", "low")
+
     def provider_config(self, provider: str) -> dict[str, Any]:
-        """Return the key/base_url/model/daily_cap dict for a named provider."""
+        """Return the key/base_url/model/daily_cap/enabled dict for a named provider."""
         p = provider.lower()
         return {
             "api_key": _configured_key(getattr(self, f"{p}_api_key", "")),
             "base_url": getattr(self, f"{p}_base_url", ""),
             "model": getattr(self, f"{p}_model", ""),
             "daily_cap": getattr(self, f"{p}_daily_cap", 0),
+            "enabled": getattr(self, f"{p}_enabled", True),
         }
 
     @property

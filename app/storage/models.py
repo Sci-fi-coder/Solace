@@ -11,7 +11,6 @@ Tables:
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from sqlalchemy import (
@@ -45,10 +44,10 @@ class UserRow(Base):
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    sessions: Mapped[list["SessionRow"]] = relationship(
+    sessions: Mapped[list[SessionRow]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    profile: Mapped["ProfileRow | None"] = relationship(
+    profile: Mapped[ProfileRow | None] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
 
@@ -66,11 +65,11 @@ class SessionRow(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     phase: Mapped[str] = mapped_column(String, default="checkin", nullable=False)
 
-    user: Mapped["UserRow"] = relationship(back_populates="sessions")
-    messages: Mapped[list["MessageRow"]] = relationship(
+    user: Mapped[UserRow] = relationship(back_populates="sessions")
+    messages: Mapped[list[MessageRow]] = relationship(
         back_populates="session", cascade="all, delete-orphan", order_by="MessageRow.timestamp"
     )
-    turn_traces: Mapped[list["TurnTraceRow"]] = relationship(
+    turn_traces: Mapped[list[TurnTraceRow]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 
@@ -89,7 +88,7 @@ class MessageRow(Base):
         DateTime, server_default=func.now(), nullable=False
     )
 
-    session: Mapped["SessionRow"] = relationship(back_populates="messages")
+    session: Mapped[SessionRow] = relationship(back_populates="messages")
 
 
 class TurnTraceRow(Base):
@@ -105,7 +104,7 @@ class TurnTraceRow(Base):
         DateTime, server_default=func.now(), nullable=False
     )
 
-    session: Mapped["SessionRow"] = relationship(back_populates="turn_traces")
+    session: Mapped[SessionRow] = relationship(back_populates="turn_traces")
 
 
 class ProfileRow(Base):
@@ -125,7 +124,7 @@ class ProfileRow(Base):
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    user: Mapped["UserRow"] = relationship(back_populates="profile")
+    user: Mapped[UserRow] = relationship(back_populates="profile")
 
 
 class ProviderUsageRow(Base):

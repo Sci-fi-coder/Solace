@@ -10,9 +10,10 @@ every table — this is the primary privacy mechanism.
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url

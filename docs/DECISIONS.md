@@ -120,3 +120,53 @@ arguments.
 credential values or spending multiple calls per smoke run.
 **Alternative:** Log raw configuration and run every task in each smoke test. Rejected for
 credential safety and avoidable usage.
+
+---
+
+## 2026-10-26 — Gateway Fallthrough and Resilience
+
+### D-018: Catch unknown provider exceptions and continue the fallback chain
+**Decision:** Catch unhandled/unexpected provider exceptions in the gateway fallback loop, log a warning, record them in `attempts` (`{provider, model, outcome: "failed", error_summary: "<Type>: <redacted message>"}`), and continue to the next provider. If all providers fail, `GatewayExhaustedError` raises with the full history of all attempts.
+**Rationale:** This replaces the earlier D-014 rule ("unknown exceptions surface unchanged"). An unhandled exception or non-standard status code (such as a 402 or client status error) from one provider should not kill the entire fallback chain when healthy fallback providers are available.
+**Alternative:** Surface unknown exceptions immediately. Rejected because a single odd failure halts the entire session rather than falling through.
+
+### D-019: Classify 402 and quota/billing errors as BillingOrQuota and disable provider
+**Decision:** Map HTTP 402 and quota/billing errors to a dedicated `BillingOrQuota(ProviderError)` exception class. When encountered, disable the provider process-wide and fall through to the next provider.
+**Rationale:** Account credit exhaustion and payment requirements are persistent conditions that do not resolve with backoff or cooldowns. Disabling the provider process-wide avoids repeatedly hammering a known-exhausted account on later turns while clearly reporting the cause.
+**Alternative:** Treat 402 as a transient error or rate limit. Rejected because 402 requires manual billing/account intervention and retrying wastes time and latency.
+
+### D-020: Use provider SDKs / OpenAI client for model catalog checking
+**Decision:** In `scripts/check_models.py`, use the official `google-genai` and `openai` clients to retrieve model catalogs rather than raw `urllib` HTTP requests. Default output displays warnings only, reserving full catalog dumps for `--verbose`.
+**Rationale:** Raw HTTP requests triggered Cloudflare HTTP 403 / Error 1010 on Groq and Cerebras endpoints in this environment. The SDK clients handle TLS and User-Agent headers properly. Defaulting to warning-only output keeps smoke CLI runs clean and uncluttered.
+**Alternative:** Header spoofing with raw HTTP clients. Rejected as fragile when official client libraries are already installed dependencies.
+
+## 2026-10-28 — Verified Gemini default
+
+### D-021: Use `gemini-3.1-flash-lite` as the Gemini default
+**Decision:** Keep `gemini-3.1-flash-lite` as the Gemini default. It is the first passing model among the three requested candidates in priority order, and its name contains neither `preview` nor `latest`.
+**Verification:** Ran `python -m scripts.smoke_llm --provider gemini` with each candidate selected through the app configuration, using the synthetic prompt from the smoke script:
+- `gemini-2.5-flash`: **FAIL**, HTTP 404 `NOT_FOUND`; exact API message: `This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/docs/get-started).`
+- `gemini-2.5-flash-lite`: **FAIL**, HTTP 404 `NOT_FOUND`; exact API message: `This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/docs/get-started).`
+- `gemini-3.1-flash-lite`: **PASS**, HTTP 200; provider `gemini` returned the exact synthetic reply `Smoke test OK.` in 3779 ms.
+**Rationale:** Catalog visibility did not establish that the account could generate with the older models. The requested live synthetic generation test resolved that conflict; the third candidate is the first available and replying model.
+
+### D-022: Keep Groq behind Gemini for small tasks
+**Decision:** Use `openai/gpt-oss-20b` as the Groq default and retain `openai/gpt-oss-120b` only as a documented optional alternative. Converse remains Gemini-first. Classify, judge, and extract try the verified `gemini-3.1-flash-lite` first and Groq GPT-OSS 20B second.
+**Rationale:** The Gemini Flash Lite candidate passed a real synthetic generation call. Groq's free-tier token-per-minute limit makes it a fallback for small calls rather than the primary route. No default chain includes Cerebras.
+
+### D-023: Preserve contract enum string formatting while satisfying Ruff
+**Decision:** Use Python 3.11 `StrEnum` for contract enums through a shared base that keeps the prior `str(EnumMember)` representation.
+**Rationale:** The repository-wide Ruff requirement flags the previous `str, Enum` pattern. The custom representation preserves the prior public formatting while retaining string equality and serialization behavior; a contract test guards that behavior.
+
+### D-024: Bound GPT-OSS reasoning retries and keep reasoning private
+**Decision:** Send configured reasoning effort only for model IDs beginning `openai/gpt-oss`. If that parameter is rejected, retry once without it. Exclude separate reasoning fields and tagged reasoning from `LLMResult.text`. If GPT-OSS returns an empty answer with finish reason `length`, retry once with a larger token limit, then raise `EmptyResponseError` so the gateway can fall through.
+**Verification:** Mocked provider tests cover all four task effort defaults, unsupported-parameter retry, reasoning exclusion, successful larger-budget retry, and exhaustion falling through to a backup provider.
+
+### D-025: Honor provider retry hints without logging error content
+**Decision:** Use numeric or HTTP-date `Retry-After` headers, millisecond retry headers, and structured or textual retry hints in error bodies as cooldown duration. A zero-second hint is honored. Cooldown logs state that a retry hint was used but never log the provider error message.
+**Verification:** Mocked tests cover header/body parsing and assert a 17-second cooldown while confirming synthetic error content is absent from logs.
+
+### D-026: Keep blank example settings safe
+**Decision:** Set `env_ignore_empty=True` and leave every `.env.example` value blank, including model, provider-enable, limit, reasoning, and fallback variables.
+**Rationale:** This meets the empty-template requirement while allowing the application defaults in `Settings` to remain effective when a user copies the example unchanged.
+**Verification:** Tests compare all `Settings` fields to the example keys and confirm representative blank model, boolean, and integer values preserve their defaults.

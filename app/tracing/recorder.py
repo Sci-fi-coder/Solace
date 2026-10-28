@@ -15,15 +15,16 @@ Usage::
 from __future__ import annotations
 
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Generator
+from datetime import UTC, datetime
+from typing import Any
 
 from app.contracts import (
     ConductorDecision,
     CriticVerdict,
-    EmotionReading,
     EmotionalState,
+    EmotionReading,
     RetrievedItem,
     SafetyResult,
     StepRecord,
@@ -58,7 +59,7 @@ class TraceRecorder:
         self._step_start: float | None = None
         self._current_step: str | None = None
 
-    def __enter__(self) -> "TraceRecorder":
+    def __enter__(self) -> TraceRecorder:
         return self
 
     def __exit__(self, *_: Any) -> None:
@@ -67,7 +68,7 @@ class TraceRecorder:
     # ── Step recording ────────────────────────────────────────────────────────
 
     @contextmanager
-    def step(self, name: str) -> Generator["TraceRecorder", None, None]:
+    def step(self, name: str) -> Generator[TraceRecorder, None, None]:
         """Context manager that automatically records a step with timing.
 
         Usage::
@@ -161,5 +162,5 @@ class TraceRecorder:
             explanation=explanation,
             steps=list(self._steps),
             provider_used=provider_used,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )

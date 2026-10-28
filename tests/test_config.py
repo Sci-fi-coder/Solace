@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.config import Settings
 
 
@@ -24,3 +26,46 @@ def test_unrecognized_environment_variables_are_ignored() -> None:
     config = Settings(_env_file=None, tavily_api_key="synthetic-unused-value")
 
     assert not hasattr(config, "tavily_api_key")
+
+
+def test_default_model_fallbacks_use_gemini_lite_before_groq() -> None:
+    """Cheap-task defaults try verified Gemini Flash Lite before Groq GPT-OSS."""
+    config = Settings(_env_file=None)
+
+    assert config.groq_model == "openai/gpt-oss-20b"
+    assert config.fallback_converse.split(",")[0] == "gemini"
+    for task in ("classify", "judge", "extract"):
+        chain = config.get_fallback_chain(task)
+        assert chain[:2] == [
+            "gemini/gemini-3.1-flash-lite",
+            "groq/openai/gpt-oss-20b",
+        ]
+        assert all(not entry.startswith("cerebras") for entry in chain)
+
+
+def test_env_example_lists_all_settings_as_empty_values() -> None:
+    """The example dotenv file exposes every setting without storing defaults."""
+    expected_names = {name.upper() for name in Settings.model_fields}
+    entries = {}
+    for line in Path(".env.example").read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            name, value = line.split("=", maxsplit=1)
+            entries[name] = value
+
+    assert set(entries) == expected_names
+    assert all(value == "" for value in entries.values())
+
+
+def test_empty_dotenv_values_leave_settings_defaults_intact(tmp_path: Path) -> None:
+    """Blank values copied from the example do not invalidate settings."""
+    env_file = tmp_path / "empty-settings.env"
+    env_file.write_text(
+        "GEMINI_MODEL=\nGROQ_ENABLED=\nGATEWAY_MAX_RETRIES=\n",
+        encoding="utf-8",
+    )
+
+    config = Settings(_env_file=env_file)
+
+    assert config.gemini_model == "gemini-3.1-flash-lite"
+    assert config.groq_enabled is True
+    assert config.gateway_max_retries == 3
