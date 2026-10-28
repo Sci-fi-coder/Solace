@@ -8,12 +8,13 @@ Adapters:
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import math
 import time
-from collections.abc import Mapping
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, TypedDict
@@ -159,10 +160,8 @@ def extract_retry_after(exc: Exception) -> float | None:
 
     body = getattr(exc, "body", None)
     if isinstance(body, str):
-        try:
+        with suppress(json.JSONDecodeError):
             body = json.loads(body)
-        except json.JSONDecodeError:
-            pass
 
     def body_hint(value: object) -> float | None:
         if isinstance(value, Mapping):
@@ -425,6 +424,7 @@ class OpenAICompatProvider(BaseProvider):
     ) -> LLMResult:
         """Call the OpenAI-compatible endpoint and return LLMResult."""
         import re
+
         import openai
 
         effective_model = model or self._model

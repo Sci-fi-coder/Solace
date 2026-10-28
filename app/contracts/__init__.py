@@ -8,7 +8,7 @@ stdlib enums, and datetime.  Any layer may safely import from here.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,7 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field
 # ── Enumerations ──────────────────────────────────────────────────────────────
 
 
-class Role(str, Enum):
+class _ContractStrEnum(StrEnum):
+    """Keep the original Enum string representation with Python 3.11 StrEnum."""
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}.{self.name}"
+
+
+class Role(_ContractStrEnum):
     """The counselling persona an agent embodies for a given turn."""
 
     counsellor = "counsellor"  # Person-centred (Rogers)
@@ -25,7 +32,7 @@ class Role(str, Enum):
     peer = "peer"              # Lived-experience peer support
 
 
-class Phase(str, Enum):
+class Phase(_ContractStrEnum):
     """Structured session phase.  Transitions are decided by the Conductor."""
 
     checkin = "checkin"
@@ -35,7 +42,7 @@ class Phase(str, Enum):
     closing = "closing"
 
 
-class SafetyLevel(str, Enum):
+class SafetyLevel(_ContractStrEnum):
     """Severity of a safety concern detected by the Sentinel."""
 
     none = "none"
@@ -43,7 +50,7 @@ class SafetyLevel(str, Enum):
     crisis = "crisis"
 
 
-class UserNeed(str, Enum):
+class UserNeed(_ContractStrEnum):
     """High-level intent inferred for the current turn."""
 
     vent = "vent"          # User primarily wants to be heard
@@ -52,7 +59,7 @@ class UserNeed(str, Enum):
     unknown = "unknown"    # Not yet determined
 
 
-class TaskKind(str, Enum):
+class TaskKind(_ContractStrEnum):
     """LLM task type — used to select the right provider fallback chain."""
 
     converse = "converse"    # Free-form dialogue turn

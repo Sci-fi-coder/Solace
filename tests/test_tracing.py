@@ -7,9 +7,8 @@ import uuid
 
 import pytest
 
-from app.contracts import SafetyLevel, SafetyResult, StepRecord, TurnTrace
+from app.contracts import SafetyLevel, SafetyResult, TurnTrace
 from app.tracing.recorder import TraceRecorder
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

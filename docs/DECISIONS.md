@@ -153,3 +153,7 @@ credential safety and avoidable usage.
 ### D-022: Keep Groq behind Gemini for small tasks
 **Decision:** Use `openai/gpt-oss-20b` as the Groq default and retain `openai/gpt-oss-120b` only as a documented optional alternative. Converse remains Gemini-first. Classify, judge, and extract try the verified `gemini-3.1-flash-lite` first and Groq GPT-OSS 20B second.
 **Rationale:** The Gemini Flash Lite candidate passed a real synthetic generation call. Groq's free-tier token-per-minute limit makes it a fallback for small calls rather than the primary route. No default chain includes Cerebras.
+
+### D-023: Preserve contract enum string formatting while satisfying Ruff
+**Decision:** Use Python 3.11 `StrEnum` for contract enums through a shared base that keeps the prior `str(EnumMember)` representation.
+**Rationale:** The repository-wide Ruff requirement flags the previous `str, Enum` pattern. The custom representation preserves the prior public formatting while retaining string equality and serialization behavior; a contract test guards that behavior.
