@@ -157,3 +157,16 @@ credential safety and avoidable usage.
 ### D-023: Preserve contract enum string formatting while satisfying Ruff
 **Decision:** Use Python 3.11 `StrEnum` for contract enums through a shared base that keeps the prior `str(EnumMember)` representation.
 **Rationale:** The repository-wide Ruff requirement flags the previous `str, Enum` pattern. The custom representation preserves the prior public formatting while retaining string equality and serialization behavior; a contract test guards that behavior.
+
+### D-024: Bound GPT-OSS reasoning retries and keep reasoning private
+**Decision:** Send configured reasoning effort only for model IDs beginning `openai/gpt-oss`. If that parameter is rejected, retry once without it. Exclude separate reasoning fields and tagged reasoning from `LLMResult.text`. If GPT-OSS returns an empty answer with finish reason `length`, retry once with a larger token limit, then raise `EmptyResponseError` so the gateway can fall through.
+**Verification:** Mocked provider tests cover all four task effort defaults, unsupported-parameter retry, reasoning exclusion, successful larger-budget retry, and exhaustion falling through to a backup provider.
+
+### D-025: Honor provider retry hints without logging error content
+**Decision:** Use numeric or HTTP-date `Retry-After` headers, millisecond retry headers, and structured or textual retry hints in error bodies as cooldown duration. A zero-second hint is honored. Cooldown logs state that a retry hint was used but never log the provider error message.
+**Verification:** Mocked tests cover header/body parsing and assert a 17-second cooldown while confirming synthetic error content is absent from logs.
+
+### D-026: Keep blank example settings safe
+**Decision:** Set `env_ignore_empty=True` and leave every `.env.example` value blank, including model, provider-enable, limit, reasoning, and fallback variables.
+**Rationale:** This meets the empty-template requirement while allowing the application defaults in `Settings` to remain effective when a user copies the example unchanged.
+**Verification:** Tests compare all `Settings` fields to the example keys and confirm representative blank model, boolean, and integer values preserve their defaults.

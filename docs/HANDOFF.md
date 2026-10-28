@@ -10,27 +10,62 @@
 
 ---
 
-## Session: 2026-10-28 — Provider handling audit
+## Session: 2026-10-28 — Gateway fallthrough audit and completion
 
-### Test-history clarification
-- The `b0a3364` test diff confirms that `test_unknown_exception_surfaces_unchanged` was
-  replaced by `test_unknown_exception_falls_through_and_appears_in_attempts`. Unknown provider
-  failures now continue through fallback instead of propagating unchanged. The same change added
+### Done
+- Completed the required read-only audit before edits: the branch was clean, Python compilation
+  succeeded, and the baseline suite passed 72 tests. The initial full Ruff run found 29
+  violations, which were fixed without excluding files.
+- Tested Gemini candidates in order with the app smoke script and synthetic input:
+  `gemini-2.5-flash` and `gemini-2.5-flash-lite` returned HTTP 404 for this account;
+  `gemini-3.1-flash-lite` returned HTTP 200 and `Smoke test OK.` The latter is the verified
+  non-preview code default.
+- Set cheap-task defaults to try verified Gemini Flash Lite before Groq GPT-OSS 20B. Converse
+  remains Gemini-first. Groq's code default is `openai/gpt-oss-20b`; `openai/gpt-oss-120b`
+  remains an optional alternative.
+- Added and passed deterministic provider tests for task-configured reasoning effort, parameter
+  rejection retry, reasoning-text exclusion, empty length-limited retry/fallback, and
+  Retry-After headers/body hints.
+- Kept Cerebras disabled in default chains; the adapter remains available. The HTTP 402 is a
+  reported account limitation and the billing-failure fallback path is covered by
+  `test_billing_or_quota_402_disables_provider`.
+- Made `.env.example` list every settings field as an empty value and confirmed empty values
+  preserve application defaults. `.env` was not opened, copied, or modified.
+- `python -m scripts.check_models` reached Gemini, Groq, and Cerebras catalogs; it warned that
+  the configured Groq model was missing. The code-default Groq model was present (no default
+  warning) and its explicit synthetic smoke call returned `Smoke test OK.`.
+- Removed `scratch_gemini.py`, which was tracked in the accepted Antigravity commit; no
+  `scratch_settings.py` was present.
+- Confirmed `test_unknown_exception_surfaces_unchanged` was replaced by
+  `test_unknown_exception_falls_through_and_appears_in_attempts`: provider errors now fall
+  through rather than propagate unchanged. The same commit added
   `test_billing_or_quota_402_disables_provider` and
-  `test_all_fail_error_contains_every_attempt`, so three tests were added and one was removed
-  (net +2, matching the prior 70-to-72 count).
-- Added `tests/test_providers.py` coverage for GPT-OSS reasoning effort, rejected-parameter
-  retry, excluding reasoning text, empty length-limited replies, and Retry-After handling.
-  Focused provider tests passed during this session.
+  `test_all_fail_error_contains_every_attempt` (three additions, one removal; net +2, from
+  70 to 72).
 
 ### Next
-- Complete the remaining configuration, catalog, secret-hygiene, and smoke-test verification.
-- Update this handoff with final suite results and known provider limitations.
+- Do not begin Layer 1 in this session. Start it only in a separately authorized task.
 
 ### Known issues
-- A full-repository Ruff run currently reports 29 violations; cleanup remains required.
-- A `.env` model override selects the stale Groq model, although the code default has been
-  changed. The dotenv file has not been opened or modified.
+- Groq has a low free-tier tokens-per-minute limit and should remain a small-call fallback.
+- The unmodified `--provider groq` smoke failed because the configured model was not in the
+  live catalog; selecting the code default explicitly passed. No dotenv file was changed.
+- The unmodified Gemini smoke passed using the configured model reported at runtime; a separate
+  run explicitly selecting the code default `gemini-3.1-flash-lite` also passed.
+- Cerebras HTTP 402 is reported for this account; it was not re-probed during this audit and
+  remains disabled by default.
+- Mistral and OpenRouter had no configured keys, so their catalogs could not be checked.
+- No Layer 1 safety or emotion work was performed.
+
+### Verification
+- `python -m compileall app scripts tests`: passed.
+- `ruff check .`: passed with no exclusions.
+- `pytest -q`: 90 passed.
+- Gemini candidates: two HTTP 404 failures, followed by `gemini-3.1-flash-lite` HTTP 200.
+- `python -m scripts.smoke_llm --provider gemini`: passed; explicit code-default run also passed.
+- `python -m scripts.smoke_llm --provider groq`: failed on the configured stale model; explicit
+  `openai/gpt-oss-20b` run passed.
+- `python -m scripts.check_models`: warned only for the configured stale Groq model.
 
 ---
 
