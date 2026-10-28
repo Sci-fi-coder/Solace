@@ -140,3 +140,12 @@ credential safety and avoidable usage.
 **Rationale:** Raw HTTP requests triggered Cloudflare HTTP 403 / Error 1010 on Groq and Cerebras endpoints in this environment. The SDK clients handle TLS and User-Agent headers properly. Defaulting to warning-only output keeps smoke CLI runs clean and uncluttered.
 **Alternative:** Header spoofing with raw HTTP clients. Rejected as fragile when official client libraries are already installed dependencies.
 
+## 2026-10-28 — Verified Gemini default
+
+### D-021: Use `gemini-3.1-flash-lite` as the Gemini default
+**Decision:** Keep `gemini-3.1-flash-lite` as the Gemini default. It is the first passing model among the three requested candidates in priority order, and its name contains neither `preview` nor `latest`.
+**Verification:** Ran `python -m scripts.smoke_llm --provider gemini` with each candidate selected through the app configuration, using the synthetic prompt from the smoke script:
+- `gemini-2.5-flash`: **FAIL**, HTTP 404 `NOT_FOUND`; exact API message: `This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/docs/get-started).`
+- `gemini-2.5-flash-lite`: **FAIL**, HTTP 404 `NOT_FOUND`; exact API message: `This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/docs/get-started).`
+- `gemini-3.1-flash-lite`: **PASS**, HTTP 200; provider `gemini` returned the exact synthetic reply `Smoke test OK.` in 3779 ms.
+**Rationale:** Catalog visibility did not establish that the account could generate with the older models. The requested live synthetic generation test resolved that conflict; the third candidate is the first available and replying model.
