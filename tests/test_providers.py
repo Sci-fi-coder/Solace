@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +10,13 @@ import pytest
 from app.config import Settings
 from app.contracts import TaskKind
 from app.llm.gateway import LLMGateway
-from app.llm.providers import LLMResult, MockProvider, OpenAICompatProvider
+from app.llm.providers import (
+    LLMResult,
+    MockProvider,
+    OpenAICompatProvider,
+    RateLimitError,
+    extract_retry_after,
+)
 
 
 class _FakeCompletions:
@@ -55,6 +62,20 @@ def _provider(*responses: object) -> tuple[OpenAICompatProvider, _FakeCompletion
         chat=SimpleNamespace(completions=completions)
     )
     return provider, completions
+
+
+class _RetryHintError(Exception):
+    """Provide response headers or a structured body for retry-hint tests."""
+
+    def __init__(
+        self,
+        *,
+        headers: dict[str, str] | None = None,
+        body: object = None,
+    ) -> None:
+        super().__init__("Synthetic rate limit")
+        self.response = SimpleNamespace(headers=headers or {})
+        self.body = body
 
 
 @pytest.mark.parametrize(
@@ -178,3 +199,56 @@ def test_empty_length_response_error_falls_through_to_next_provider(
     assert "EmptyResponseError" in result.attempts[0]["error_summary"]
     assert len(completions.calls) == 2
     assert "unexpected ProviderError" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_seconds"),
+    [
+        (_RetryHintError(headers={"Retry-After": "17"}), 17.0),
+        (_RetryHintError(headers={"retry-after-ms": "2500"}), 2.5),
+        (_RetryHintError(body={"error": {"retry_after": 23}}), 23.0),
+        (_RetryHintError(body='{"error":{"retry_after_ms":1500}}'), 1.5),
+        (_RetryHintError(body='{"message":"retry_after": 12}'), 12.0),
+    ],
+)
+def test_extract_retry_after_from_headers_and_error_body(
+    error: Exception,
+    expected_seconds: float,
+) -> None:
+    """Read retry delays from standard headers and provider error hints."""
+    assert extract_retry_after(error) == expected_seconds
+
+
+def test_retry_after_header_sets_cooldown_without_logging_error_content(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Honor the parsed Retry-After delay and keep rate-limit logs content-free."""
+    delay = extract_retry_after(_RetryHintError(headers={"Retry-After": "17"}))
+    limited = MockProvider(
+        raise_on_call=RateLimitError(
+            "limited",
+            429,
+            "synthetic-private-error-content",
+            retry_after=delay,
+        )
+    )
+    limited.name = "limited"
+    backup = MockProvider(fixed_output="backup answer")
+    gateway = LLMGateway(
+        providers={"limited": limited, "backup": backup},
+        fallback_chains={kind.value: ["limited", "backup"] for kind in TaskKind},
+        daily_caps={"limited": 10, "backup": 10},
+        cooldown_seconds=60,
+        max_retries=1,
+    )
+
+    result = gateway.generate(
+        TaskKind.converse,
+        [{"role": "user", "content": "Synthetic test."}],
+    )
+
+    remaining = gateway._cooldown_until["limited"] - time.monotonic()
+    assert result.provider == "backup"
+    assert 16.9 <= remaining <= 17.0
+    assert "Retry-After hint" in caplog.text
+    assert "synthetic-private-error-content" not in caplog.text

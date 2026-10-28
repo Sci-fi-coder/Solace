@@ -467,7 +467,7 @@ class LLMGateway:
     ) -> None:
         duration = (
             cooldown_s
-            if cooldown_s is not None and cooldown_s > 0
+            if cooldown_s is not None and cooldown_s >= 0
             else float(self._cooldown_s)
         )
         self._cooldown_until[provider] = time.monotonic() + duration
@@ -519,7 +519,9 @@ class LLMGateway:
                 result = provider.generate(messages, **kwargs)
                 return result, self._attempt(provider_name, model or result.model, "served", "")
             except RateLimitError as exc:
-                cooldown = getattr(exc, "retry_after", None) or extract_retry_after(exc)
+                cooldown = getattr(exc, "retry_after", None)
+                if cooldown is None:
+                    cooldown = extract_retry_after(exc)
                 reason = "Retry-After hint" if cooldown is not None else "rate limit"
                 self._set_cooldown(provider_name, cooldown_s=cooldown, reason=reason)
                 summary = self._exception_summary(exc)
@@ -571,7 +573,9 @@ class LLMGateway:
                     )
                     return None, self._attempt(provider_name, model, "failed", summary)
                 if exc.status == 429:
-                    cooldown = getattr(exc, "retry_after", None) or extract_retry_after(exc)
+                    cooldown = getattr(exc, "retry_after", None)
+                    if cooldown is None:
+                        cooldown = extract_retry_after(exc)
                     reason = "Retry-After hint" if cooldown is not None else "rate limit"
                     self._set_cooldown(provider_name, cooldown_s=cooldown, reason=reason)
                     return None, self._attempt(

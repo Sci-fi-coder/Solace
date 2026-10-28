@@ -9,8 +9,13 @@ Adapters:
 from __future__ import annotations
 
 import logging
+import json
+import math
 import time
+from collections.abc import Mapping
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, TypedDict
 
 from app.contracts import TaskKind
@@ -116,37 +121,94 @@ class ProviderAttempt(TypedDict):
 
 
 def extract_retry_after(exc: Exception) -> float | None:
-    """Extract retry-after duration in seconds from response headers or error message."""
+    """Extract a retry delay in seconds from headers or a structured error hint."""
     import re
+
+    def parse_seconds(value: object, *, milliseconds: bool = False) -> float | None:
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(seconds) or seconds < 0:
+            return None
+        return seconds / 1000 if milliseconds else seconds
 
     response = getattr(exc, "response", None)
     if response is not None:
         headers = getattr(response, "headers", {}) or {}
-        header_val = headers.get("retry-after") or headers.get("Retry-After")
-        if header_val is not None:
-            try:
-                return float(header_val)
-            except (ValueError, TypeError):
-                pass
-        header_val_ms = headers.get("retry-after-ms") or headers.get("Retry-After-Ms")
-        if header_val_ms is not None:
-            try:
-                return float(header_val_ms) / 1000.0
-            except (ValueError, TypeError):
-                pass
+        if isinstance(headers, Mapping):
+            normalized_headers = {str(key).lower(): value for key, value in headers.items()}
+            retry_after = parse_seconds(normalized_headers.get("retry-after"))
+            if retry_after is not None:
+                return retry_after
+            retry_after_ms = parse_seconds(
+                normalized_headers.get("retry-after-ms"),
+                milliseconds=True,
+            )
+            if retry_after_ms is not None:
+                return retry_after_ms
+            raw_date = normalized_headers.get("retry-after")
+            if isinstance(raw_date, str):
+                try:
+                    retry_date = parsedate_to_datetime(raw_date)
+                    if retry_date.tzinfo is None:
+                        retry_date = retry_date.replace(tzinfo=UTC)
+                    return max(0.0, (retry_date - datetime.now(UTC)).total_seconds())
+                except (TypeError, ValueError, OverflowError):
+                    pass
 
-    msg = str(exc)
+    body = getattr(exc, "body", None)
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            pass
+
+    def body_hint(value: object) -> float | None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                normalized_key = str(key).lower().replace("-", "_")
+                if normalized_key in ("retry_after", "retry_after_seconds"):
+                    parsed = parse_seconds(item)
+                    if parsed is not None:
+                        return parsed
+                elif normalized_key == "retry_after_ms":
+                    parsed = parse_seconds(item, milliseconds=True)
+                    if parsed is not None:
+                        return parsed
+                nested = body_hint(item)
+                if nested is not None:
+                    return nested
+        elif isinstance(value, list):
+            for item in value:
+                nested = body_hint(item)
+                if nested is not None:
+                    return nested
+        return None
+
+    parsed_body = body_hint(body)
+    if parsed_body is not None:
+        return parsed_body
+
+    msg = f"{body!s} {exc}"
+    millisecond_match = re.search(
+        r"retry[-_ ]after[-_ ]ms\s*[:=]\s*(\d+(?:\.\d+)?)",
+        msg,
+        re.IGNORECASE,
+    )
+    if millisecond_match:
+        return parse_seconds(millisecond_match.group(1), milliseconds=True)
     match = re.search(
-        r"(?:try again in|retry[-_ ]after[:\s]+|wait\s+)(\d+(?:\.\d+)?)\s*(s|sec|seconds|ms)?",
+        r"(?:try again in|retry[-_ ]after(?:[\"']?\s*[:=]\s*|\s+)|"
+        r"retry after\s+|wait\s+)(\d+(?:\.\d+)?)\s*"
+        r"(ms|milliseconds|s|sec|seconds)?",
         msg,
         re.IGNORECASE,
     )
     if match:
-        val = float(match.group(1))
+        value = float(match.group(1))
         unit = (match.group(2) or "").lower()
-        if unit == "ms":
-            return val / 1000.0
-        return val
+        return parse_seconds(value, milliseconds=unit in ("ms", "milliseconds"))
     return None
 
 
