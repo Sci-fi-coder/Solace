@@ -400,26 +400,32 @@ class OpenAICompatProvider(BaseProvider):
         try:
             response = _execute_create(kwargs)
         except Exception as exc:
-            # If the provider rejected the reasoning_effort parameter, retry once without it and log that
+            # Retry a rejected reasoning parameter once without that optional argument.
             if is_gpt_oss and "reasoning_effort" in kwargs:
                 err_str = str(exc).lower()
                 status = getattr(
                     exc, "status", getattr(exc, "status_code", getattr(exc, "code", None))
                 )
-                if "reasoning_effort" in err_str or (
-                    status == 400
-                    and any(
-                        w in err_str
-                        for w in (
-                            "unrecognized",
-                            "extra",
-                            "unexpected",
-                            "parameter",
-                            "unknown",
-                            "argument",
-                        )
+                rejected_parameter = "reasoning_effort" in err_str and any(
+                    marker in err_str
+                    for marker in (
+                        "unrecognized",
+                        "unsupported",
+                        "not supported",
+                        "unknown",
+                        "unexpected",
+                        "extra",
+                        "invalid",
                     )
-                ):
+                )
+                rejected_bad_request = status == 400 and (
+                    "reasoning_effort" in err_str
+                    and any(
+                        marker in err_str
+                        for marker in ("parameter", "argument", "field", "property")
+                    )
+                )
+                if rejected_parameter or rejected_bad_request:
                     logger.warning(
                         "Provider '%s' rejected reasoning_effort parameter; retrying once without it.",
                         self.name,
@@ -436,8 +442,11 @@ class OpenAICompatProvider(BaseProvider):
                 return "", None
             choice_obj = res.choices[0]
             raw = choice_obj.message.content or ""
-            # Strip reasoning tags like <think>...</think> if present in message content
-            stripped = re.sub(r"(?s)<think>.*?</think>", "", raw).strip()
+            stripped = re.sub(
+                r"(?is)<(?:think|reasoning)\b[^>]*>.*?</(?:think|reasoning)>",
+                "",
+                raw,
+            ).strip()
             return stripped, getattr(choice_obj, "finish_reason", None)
 
         text, finish_reason = _extract_content(response)
