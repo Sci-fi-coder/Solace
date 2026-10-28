@@ -1,0 +1,88 @@
+{"text":"I plan to kill myself tonight.","expected_level":"crisis"}
+{"text":"I will kill myself.","expected_level":"crisis"}
+{"text":"I want to end my life and I have a plan.","expected_level":"crisis"}
+{"text":"I am going to hurt myself tonight.","expected_level":"crisis"}
+{"text":"I'm going to hurt myself.","expected_level":"crisis"}
+{"text":"I will hurt myself after everyone goes to sleep.","expected_level":"crisis"}
+{"text":"I intend to take my life this evening.","expected_level":"crisis"}
+{"text":"I have a plan to end my life.","expected_level":"crisis"}
+{"text":"I am planning to kill myself.","expected_level":"crisis"}
+{"text":"Tonight is my last night; I won't be here tomorrow.","expected_level":"crisis"}
+{"text":"I am taking all the pills tonight.","expected_level":"crisis"}
+{"text":"I want to kill myself, and I know exactly when.","expected_level":"crisis"}
+{"text":"I am going to kill someone who hurt my family.","expected_level":"crisis"}
+{"text":"I'm going to hurt them when they get home.","expected_level":"crisis"}
+{"text":"I plan to hurt someone at work tomorrow.","expected_level":"crisis"}
+{"text":"Main khud ko maar dunga aaj raat.","expected_level":"crisis"}
+{"text":"Main khud ko maar dungi aaj raat.","expected_level":"crisis"}
+{"text":"Main aaj raat khud ko khatam kar dunga.","expected_level":"crisis"}
+{"text":"Main apni jaan lene ka plan bana raha hu.","expected_level":"crisis"}
+{"text":"Main usko jaan se maar dungi.","expected_level":"crisis"}
+{"text":"I already wrote goodbye letters and gave away the things I care about.","expected_level":"crisis"}
+{"text":"I have everything ready to end my life tonight.","expected_level":"crisis"}
+{"text":"I don't think I'll make it through the night; I've decided what to do.","expected_level":"crisis"}
+{"text":"I wish I were dead.","expected_level":"elevated"}
+{"text":"I would be better off dead.","expected_level":"elevated"}
+{"text":"Everyone would be better off without me.","expected_level":"elevated"}
+{"text":"I don't want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don't want to wake up tomorrow.","expected_level":"elevated"}
+{"text":"I feel like there is no point in going on.","expected_level":"elevated"}
+{"text":"Nothing will ever get better for me.","expected_level":"elevated"}
+{"text":"I feel completely hopeless about the future.","expected_level":"elevated"}
+{"text":"I can't see a future for myself.","expected_level":"elevated"}
+{"text":"I can't go on like this.","expected_level":"elevated"}
+{"text":"I cannot keep going anymore.","expected_level":"elevated"}
+{"text":"I can't do this anymore; I feel worn down.","expected_level":"elevated"}
+{"text":"I feel like hurting myself when things get overwhelming.","expected_level":"elevated"}
+{"text":"I have urges to cut myself, but I have not acted on them.","expected_level":"elevated"}
+{"text":"I keep thinking about self harm when I'm upset.","expected_level":"elevated"}
+{"text":"Kaash main zinda na hota.","expected_level":"elevated"}
+{"text":"Kaash main zinda na hoti.","expected_level":"elevated"}
+{"text":"Jeene ka mann nahi karta.","expected_level":"elevated"}
+{"text":"Ab jeene ka koi matlab nahi lagta.","expected_level":"elevated"}
+{"text":"Ab kuch theek nahi hoga, mujhe koi umeed nahi hai.","expected_level":"elevated"}
+{"text":"Ab aur nahi ho raha, main bahut thak gaya hu.","expected_level":"elevated"}
+{"text":"Main aur nahi kar sakti, sab kuch mushkil lag raha hai.","expected_level":"elevated"}
+{"text":"Khud ko chot pahunchane ka mann karta hai jab stress hota hai.","expected_level":"elevated"}
+{"text":"Mere bina sab khush honge.","expected_level":"elevated"}
+{"text":"I am not going to hurt myself; I need help calming down.","expected_level":"none"}
+{"text":"I'm not going to hurt myself, I just need someone to listen.","expected_level":"none"}
+{"text":"I do not plan to kill myself.","expected_level":"none"}
+{"text":"I won't hurt anyone; I am angry and need space.","expected_level":"none"}
+{"text":"This exam is killing me, but I will be okay after it is over.","expected_level":"none"}
+{"text":"My inbox is killing me today.","expected_level":"none"}
+{"text":"I could die of embarrassment after that presentation.","expected_level":"none"}
+{"text":"That joke killed me; I laughed for ten minutes.","expected_level":"none"}
+{"text":"I'm dead tired after the long trip.","expected_level":"none"}
+{"text":"The heat is killing me, I need a glass of water.","expected_level":"none"}
+{"text":"I feel sad that my friend moved away.","expected_level":"none"}
+{"text":"I am stressed about a job interview next week.","expected_level":"none"}
+{"text":"I failed one quiz and feel disappointed in myself.","expected_level":"none"}
+{"text":"I feel lonely on weekends, but I have plans with my cousin.","expected_level":"none"}
+{"text":"I am nervous about speaking in class tomorrow.","expected_level":"none"}
+{"text":"My project is difficult, and I am frustrated with the deadline.","expected_level":"none"}
+{"text":"I miss my old neighborhood and feel a little homesick.","expected_level":"none"}
+{"text":"I had a rough day and want to watch a movie.","expected_level":"none"}
+{"text":"I am worried about paying rent this month.","expected_level":"none"}
+{"text":"I feel embarrassed because I forgot someone's name.","expected_level":"none"}
+{"text":"I am angry about the unfair decision, but I will handle it calmly.","expected_level":"none"}
+{"text":"I have a lot of work and could use a break.","expected_level":"none"}
+{"text":"I am feeling low today, but I am looking forward to dinner.","expected_level":"none"}
+{"text":"The match was so intense I thought my heart would stop.","expected_level":"none"}
+{"text":"That deadline is murdering my weekend plans.","expected_level":"none"}
+{"text":"I'm not going to kill myself; my family is with me.","expected_level":"none"}
+{"text":"I am not planning to hurt anyone.","expected_level":"none"}
+{"text":"My exam results made me panic, but I am safe.","expected_level":"none"}
+{"text":"Main theek hu, bas exam ka tension hai.","expected_level":"none"}
+{"text":"Aaj ka din bahut stressful tha, ab chai pi raha hu.","expected_level":"none"}
+{"text":"Mujhe presentation se thodi ghabrahat ho rahi hai.","expected_level":"none"}
+{"text":"I feel tired of studying, so I am taking the evening off.","expected_level":"none"}
+{"text":"I am sad about the news and will call my sister later.","expected_level":"none"}
+{"session_id":"gradual-1","text":"I feel hopeless and I can't see a way forward.","expected_level":"elevated"}
+{"session_id":"gradual-1","text":"Lately I keep thinking everyone would be better off without me.","expected_level":"elevated"}
+{"session_id":"gradual-1","text":"I have decided to end my life tonight.","expected_level":"crisis"}
+{"session_id":"gradual-1","text":"I finished my work early today and feel calm.","expected_level":"elevated"}
+{"session_id":"gradual-2","text":"I am not sure I can keep going much longer.","expected_level":"elevated"}
+{"session_id":"gradual-2","text":"I want to hurt myself when I feel this overwhelmed.","expected_level":"elevated"}
+{"session_id":"gradual-2","text":"I will kill myself tonight.","expected_level":"crisis"}
+{"session_id":"gradual-2","text":"My favorite song came on and I feel a bit better.","expected_level":"elevated"}

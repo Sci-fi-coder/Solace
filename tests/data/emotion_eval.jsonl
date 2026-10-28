@@ -1,0 +1,48 @@
+{"text":"I feel sad and lonely after my friend moved away.","expected_label":"sadness"}
+{"text":"The loss still hurts, and I miss my grandmother every day.","expected_label":"sadness"}
+{"text":"I am disappointed that my hard work was overlooked.","expected_label":"sadness"}
+{"text":"I feel grief when I think about our old home.","expected_label":"sadness"}
+{"text":"I feel down and discouraged after failing the exam.","expected_label":"sadness"}
+{"text":"I am heartbroken that the friendship ended.","expected_label":"sadness"}
+{"text":"I feel empty and blue this rainy afternoon.","expected_label":"sadness"}
+{"text":"I miss my family and feel homesick.","expected_label":"sadness"}
+{"text":"I am afraid the medical appointment will go badly.","expected_label":"anxiety_fear"}
+{"text":"I feel nervous about speaking in front of everyone.","expected_label":"anxiety_fear"}
+{"text":"I keep worrying about what might happen tomorrow.","expected_label":"anxiety_fear"}
+{"text":"My hands shake when I think about the interview.","expected_label":"anxiety_fear"}
+{"text":"I feel uneasy walking home alone at night.","expected_label":"anxiety_fear"}
+{"text":"I am anxious that I will disappoint my team.","expected_label":"anxiety_fear"}
+{"text":"I dread the difficult conversation with my manager.","expected_label":"anxiety_fear"}
+{"text":"I feel panicky when I cannot reach my brother.","expected_label":"anxiety_fear"}
+{"text":"I am angry about being blamed for someone else's mistake.","expected_label":"anger"}
+{"text":"This unfair treatment makes me furious.","expected_label":"anger"}
+{"text":"I am annoyed that my roommate keeps leaving dishes everywhere.","expected_label":"anger"}
+{"text":"I strongly disapprove of how they treated the new student.","expected_label":"anger"}
+{"text":"I feel irritated by the constant interruptions.","expected_label":"anger"}
+{"text":"I am disgusted by the way the animals were treated.","expected_label":"anger"}
+{"text":"I feel frustrated that the rules changed without warning.","expected_label":"anger"}
+{"text":"I am upset and resentful about the broken promise.","expected_label":"anger"}
+{"text":"I feel guilty for forgetting my friend's birthday.","expected_label":"shame_guilt"}
+{"text":"I am embarrassed that I stumbled over my words.","expected_label":"shame_guilt"}
+{"text":"I regret speaking harshly to my younger brother.","expected_label":"shame_guilt"}
+{"text":"I feel ashamed of how I behaved yesterday.","expected_label":"shame_guilt"}
+{"text":"I wish I had apologized sooner; I feel remorseful.","expected_label":"shame_guilt"}
+{"text":"I feel awkward because I made a small mistake in public.","expected_label":"shame_guilt"}
+{"text":"I blame myself for not noticing my friend's sadness.","expected_label":"shame_guilt"}
+{"text":"I feel bad about letting my group down.","expected_label":"shame_guilt"}
+{"text":"I am grateful for my neighbor's kindness.","expected_label":"positive"}
+{"text":"I feel joyful about the good news.","expected_label":"positive"}
+{"text":"I love spending time with my cousins.","expected_label":"positive"}
+{"text":"I am excited to start my new project.","expected_label":"positive"}
+{"text":"I feel hopeful that things will work out.","expected_label":"positive"}
+{"text":"I am proud of myself for finishing the course.","expected_label":"positive"}
+{"text":"That was a delightful surprise, and it made me smile.","expected_label":"positive"}
+{"text":"I feel relieved now that my sister is home safe.","expected_label":"positive"}
+{"text":"The meeting is at three, and I have the notes ready.","expected_label":"neutral"}
+{"text":"I am going to pick up groceries after work.","expected_label":"neutral"}
+{"text":"The bus arrived ten minutes later than usual.","expected_label":"neutral"}
+{"text":"I sent the document to my colleague this morning.","expected_label":"neutral"}
+{"text":"The room has two windows and a wooden table.","expected_label":"neutral"}
+{"text":"I will call the office when it opens tomorrow.","expected_label":"neutral"}
+{"text":"My appointment was moved from Tuesday to Thursday.","expected_label":"neutral"}
+{"text":"The package is waiting near the front door.","expected_label":"neutral"}

@@ -6,7 +6,41 @@
 ---
 
 ## Current Branch
-`fix-gateway-fallthrough`
+`layer-1-safety-emotion`
+
+---
+
+## Session: 2026-10-28 — Layer 1 Safety and Emotion
+
+### Done
+- Created `layer-1-safety-emotion` from `main`.
+- Added YAML-backed English and Hinglish rule patterns, normalization, negation handling, the
+  sticky `SafetyGate`, structured gateway classification, fixed crisis templates, and unverified
+  helpline metadata.
+- Added lazy GoEmotions inference with injectable classifier, fine/coarse labels, evaluation
+  scripts, synthetic datasets, and focused unit tests.
+- Updated architecture and decision documentation for Layer 1.
+
+### Verified
+- `pytest -q`: 116 passed, 1 deselected (the marked slow model-download test).
+- `ruff check .` and `git diff --check`: passed.
+- Safety rules-only evaluation: 88 synthetic examples; crisis recall 1.000, crisis precision
+  1.000, and none-class false-positive rate 0.000.
+- Emotion evaluation: 48 synthetic examples; coarse-label accuracy 0.917.
+- `scripts/try_layer1.py` completed an interactive synthetic turn and recorded safety/emotion
+  StepRecords.
+- A wheel build confirmed all three safety YAML files are packaged.
+- The official PyTorch CPU index listed CPython 3.13 Windows wheels beginning at 2.6.0; the local
+  Python 3.13.2 model evaluation also completed.
+
+### Known gaps
+- Rules+LLM evaluation was not run: it remains explicitly opt-in and no provider credentials were
+  configured in the isolated verification environment. Gateway fallback/degraded behavior and
+  result caching are covered with deterministic tests.
+- Safety patterns and emotion outputs are not clinically validated.
+
+### Next
+- Begin Layer 2 (Knowledge Base / RAG) in a separate session after this layer is committed.
 
 ---
 

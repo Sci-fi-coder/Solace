@@ -170,3 +170,50 @@ credential safety and avoidable usage.
 **Decision:** Set `env_ignore_empty=True` and leave every `.env.example` value blank, including model, provider-enable, limit, reasoning, and fallback variables.
 **Rationale:** This meets the empty-template requirement while allowing the application defaults in `Settings` to remain effective when a user copies the example unchanged.
 **Verification:** Tests compare all `Settings` fields to the example keys and confirm representative blank model, boolean, and integer values preserve their defaults.
+
+## 2026-10-28 — Layer 1 Safety and Emotion
+
+### D-027: Keep deterministic safety rules as the floor
+**Decision:** Run reviewable YAML rule patterns before the gateway safety classifier, take the
+maximum resulting risk level, and treat classifier failure/cap exhaustion as a degraded rules-only
+result. A crisis result sets a sticky session flag that keeps later turns at least elevated.
+**Rationale:** A model outage or erroneous downgrade must not erase a deterministic safety signal.
+Patterns remain in data files so reviewers can audit language and update them without code edits.
+Nearby intent negation is scoped to the matched phrase, while idioms are excluded by using
+explicit self/other-harm language rather than broad death/violence keywords.
+**Alternative:** Ask the LLM to arbitrate or replace rule matches. Rejected because it could
+downgrade a rule hit and fail open during provider outages.
+
+### D-028: Keep crisis language non-generative and helplines unverified by default
+**Decision:** Crisis replies are fixed constants in `app/safety/responses.py`; no crisis reply
+uses an LLM. Helpline entries use `TODO_VERIFY`, `verified: false`, and emit a warning when
+loaded. The crisis template links to a location-specific directory rather than inventing a phone
+number.
+**Rationale:** A locally reviewed response avoids generation variability, while country-specific
+numbers must be verified before they are shown as reliable resources.
+
+### D-029: Add safety diagnostics and fine/coarse emotion to contracts
+**Decision:** Add degradation/provider/model/attempt fields to `SafetyResult`, and fine/coarse
+label fields to `EmotionReading` while preserving existing fields and defaults.
+**Rationale:** The trace must reveal provider fallback and degraded operation, and emotion callers
+need both the original GoEmotions label and a coarser category. `TraceRecorder` stores summary-only
+step records; no message text is included in log messages or step summaries.
+
+### D-030: Keep local GoEmotions inference lazy and optional
+**Decision:** Put `torch` and `transformers` in the optional `[ml]` extra, default to the requested
+`SamLowe/roberta-base-go_emotions` model, load it only on first inference, and force CPU
+execution. Tests inject a classifier and do not download weights.
+**Rationale:** Layer 0 installs remain lightweight and tests deterministic; CPU inference works
+without requiring a GPU. The score is not calibrated as emotional intensity. The optional
+dependency remains separate from the core installation; CPU-only installation uses PyTorch's CPU
+package index.
+**Verification:** The official CPU index listed Python 3.13 Windows wheels starting with torch
+2.6.0; the installed Python 3.13.2 environment loaded the selected model and evaluated all
+synthetic examples successfully.
+
+### D-031: Make LLM evaluation opt-in and cache successful calls
+**Decision:** Safety evaluation defaults to rules-only; `--with-llm` enables gateway calls and
+stores successful structured results under `.cache/`, keyed by a SHA-256 digest of model chain,
+current message, and recent user context.
+**Rationale:** Synthetic evaluation should not spend free-tier quota on repeated runs. Including
+recent context prevents a prior-turn change from incorrectly reusing a multi-turn classification.

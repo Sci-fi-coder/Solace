@@ -78,8 +78,14 @@ class SafetyResult(BaseModel):
 
     level: SafetyLevel
     reasons: list[str] = Field(default_factory=list, description="Human-readable flags triggered.")
-    source: str = Field(description="'rule' for the rule-based sentinel; 'classifier' if ML.")
-    action: str = Field(description="What the system should do, e.g. 'continue', 'warn', 'escalate'.")
+    source: str = Field(description="Detection source: rule, classifier, or rule+classifier.")
+    action: str = Field(description="Pipeline action: proceed, soft_check, or crisis_override.")
+    degraded: bool = Field(
+        default=False, description="The LLM classifier was unavailable; rules were used alone."
+    )
+    classifier_provider: str | None = None
+    classifier_model: str | None = None
+    classifier_attempts: list[dict[str, str]] = Field(default_factory=list)
 
 
 # ── Emotion ───────────────────────────────────────────────────────────────────
@@ -90,12 +96,18 @@ class EmotionReading(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    label: str = Field(description="Top emotion label.")
-    score: float = Field(ge=0.0, le=1.0, description="Confidence for top label.")
+    label: str = Field(description="Top mapped coarse emotion label.")
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Aggregated model score for the coarse label; not calibrated intensity.",
+    )
     top_k: list[tuple[str, float]] = Field(
-        default_factory=list, description="Top-k (label, score) pairs."
+        default_factory=list, description="Top-k (coarse label, aggregated score) pairs."
     )
     source_model: str = Field(description="Model name / identifier used for classification.")
+    fine_label: str | None = Field(default=None, description="Top original GoEmotions label.")
+    coarse_label: str | None = Field(default=None, description="Top mapped emotion category.")
 
 
 class EmotionHypothesis(BaseModel):
