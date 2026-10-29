@@ -100,3 +100,30 @@
 {"session_id":"gradual-2","text":"I want to hurt myself when I feel this overwhelmed.","expected_level":"elevated"}
 {"session_id":"gradual-2","text":"I will kill myself tonight.","expected_level":"crisis"}
 {"session_id":"gradual-2","text":"My favorite song came on and I feel a bit better.","expected_level":"elevated"}
+{"text":"ab aur nahi jee sakta","expected_level":"elevated"}
+{"text":"I just want to sleep and not wake up","expected_level":"elevated"}
+{"text":"k1ll mys3lf","expected_level":"crisis"}
+{"text":"I wish I could disappear for good","expected_level":"elevated"}
+{"text":"There is no reason to live anymore","expected_level":"elevated"}
+{"text":"no reason to live","expected_level":"elevated"}
+{"text":"I can't go on living anymore","expected_level":"elevated"}
+{"text":"I can't take it anymore","expected_level":"elevated"}
+{"text":"Main jeena nahi chahta","expected_level":"elevated"}
+{"text":"ab aur nahi jee sakti","expected_level":"elevated"}
+{"text":"main jeena nahi chahti","expected_level":"elevated"}
+{"text":"bas sab khatam","expected_level":"elevated"}
+{"text":"main sab khatam kar du","expected_level":"elevated"}
+{"text":"kill myself","expected_level":"crisis"}
+{"text":"end my life","expected_level":"crisis"}
+{"text":"hurt myself","expected_level":"crisis"}
+{"text":"h4rm mys3lf","expected_level":"crisis"}
+{"text":"3nd my l1fe","expected_level":"crisis"}
+{"text":"Main khud ko maarna chahta hu","expected_level":"crisis"}
+{"text":"Main apni jaan le lunga","expected_level":"crisis"}
+{"text":"I want to sleep in and not wake up before noon on Sunday","expected_level":"none"}
+{"text":"this heat is killing me","expected_level":"none"}
+{"text":"my phone died, I can't live without charging it lol","expected_level":"none"}
+{"text":"jee bhar ke khaya","expected_level":"none"}
+{"text":"main thak gaya hoon, bas chai chahiye","expected_level":"none"}
+{"text":"exam dekh ke main mar gaya yaar","expected_level":"none"}
+{"text":"this deadline is killing me","expected_level":"none"}

@@ -24,6 +24,14 @@ crisis:
     - 'i will hurt myself'
     - 'i am going to self harm'
     - 'i''m going to self harm'
+  explicit_self_harm:
+    - 'kill myself'
+    - 'end my life'
+    - 'take my life'
+    - 'hurt myself'
+    - 'harm myself'
+    - 'cut myself'
+    - 'self harm'
   harm_others:
     - 'i am going to kill (?:him|her|them|someone|people)'
     - 'i''m going to kill (?:him|her|them|someone|people)'
@@ -43,6 +51,13 @@ elevated:
     - 'i do not want to wake up'
     - 'i don''t want to wake up'
     - 'i want to disappear forever'
+    - 'i (?:just )?(?:want|wanna|wish) to sleep and (?:not|never) wake up(?: again)?'
+    - 'i (?:wish i could|hope i can) sleep and not wake up(?: again)?'
+    - 'i (?:wish i could|want to|wanna) disappear(?: forever| for good| completely)?'
+    - '(?:i|everyone) (?:would|will|d) be better off (?:dead|without me)'
+    - 'better off dead'
+    - '(?:i have|there is|there''s|theres) no reason (?:for me )?to (?:live|go on)'
+    - 'no reason (?:for me )?to (?:live|go on)'
   hopelessness:
     - 'there is no point in going on'
     - 'there is no point anymore'
@@ -65,6 +80,8 @@ elevated:
     - 'i''m not sure i can keep going'
     - 'i am at the end of my rope'
     - 'i''m at the end of my rope'
+    - 'i can(?:not|''?t) (?:go on|keep going)(?: living)?(?: any longer| anymore)?'
+    - 'i can(?:not|''?t) (?:do this|take it)(?: any longer| anymore)'
   self_harm_urge:
     - 'i feel like hurting myself'
     - 'i feel like cutting myself'

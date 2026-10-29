@@ -6,7 +6,7 @@ import argparse
 import json
 from uuid import uuid4
 
-from app.contracts import Message, SafetyLevel
+from app.contracts import Message
 from app.emotion import EmotionRecognizer, HuggingFaceEmotionClassifier
 from app.safety.classifier import GatewaySafetyClassifier
 from app.safety.responses import response_template
@@ -14,17 +14,33 @@ from app.safety.sentinel import SafetyGate
 from app.tracing.recorder import TraceRecorder
 
 
-def main() -> None:
-    """Run an interactive safety/emotion loop until the user enters /quit."""
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse local smoke-test options without changing provider or model defaults."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--with-llm",
         action="store_true",
-        help="Send messages to configured providers; only use synthetic test text.",
+        help="Enable the safety LLM classifier; only use synthetic test text.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--no-emotion",
+        action="store_true",
+        help="Skip emotion classification and model loading.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print complete safety, emotion, and trace JSON.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run an interactive safety/emotion loop until the user enters /quit."""
+    args = _parse_args(argv)
 
     classifier = None
+    engine = None
     if args.with_llm:
         from sqlalchemy import create_engine
 
@@ -32,12 +48,10 @@ def main() -> None:
 
         engine = create_engine("sqlite:///:memory:")
         classifier = GatewaySafetyClassifier(LLMGateway.from_settings(engine=engine))
-    print("Layer 1 local test. Enter /quit to exit.")
-    print("Use synthetic text only; free-tier providers may log requests.")
     history: list[Message] = []
     session_state: dict[str, object] = {}
     session_id = str(uuid4())
-    emotion_classifier = HuggingFaceEmotionClassifier()
+    emotion_classifier = None if args.no_emotion else HuggingFaceEmotionClassifier()
     try:
         while True:
             try:
@@ -58,30 +72,54 @@ def main() -> None:
                 history,
                 session_state,
             )
-            emotion = EmotionRecognizer(
-                emotion_classifier,
-                trace_recorder=recorder,
-            ).read(message)
+            emotion = (
+                EmotionRecognizer(
+                    emotion_classifier,
+                    trace_recorder=recorder,
+                ).read(message)
+                if emotion_classifier is not None
+                else None
+            )
             trace = recorder.build(
                 safety=safety,
                 emotion=emotion,
                 final_reply=response_template(safety.level) or "",
                 explanation="Layer 1 safety/emotion smoke test only.",
-                provider_used=safety.classifier_provider or emotion.source_model,
+                provider_used=(
+                    f"{safety.classifier_provider}/{safety.classifier_model}"
+                    if safety.classifier_provider and safety.classifier_model
+                    else emotion.source_model
+                    if emotion is not None
+                    else "rules-only"
+                ),
             )
-            print("SafetyResult:")
-            print(safety.model_dump_json(indent=2))
-            print("EmotionReading:")
-            print(emotion.model_dump_json(indent=2))
-            print("Fixed template:")
-            print(response_template(safety.level) or "(none)")
-            if safety.level == SafetyLevel.crisis:
-                print("Crisis override: do not send this turn to a reply-generating agent.")
-            print("StepRecords:")
-            print(json.dumps([step.model_dump(mode="json") for step in trace.steps], indent=2))
+            if args.verbose:
+                print(
+                    json.dumps(
+                        {
+                            "safety": safety.model_dump(mode="json"),
+                            "emotion": emotion.model_dump(mode="json") if emotion else None,
+                            "fixed_template": response_template(safety.level),
+                            "trace": trace.model_dump(mode="json"),
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "level": safety.level.value,
+                            "reasons": safety.reasons,
+                            "degraded": safety.degraded,
+                            "classifier_provider": safety.classifier_provider,
+                            "classifier_model": safety.classifier_model,
+                        }
+                    )
+                )
             history.append(Message(role="user", content=message))
     finally:
-        if args.with_llm:
+        if engine is not None:
             engine.dispose()
 
 

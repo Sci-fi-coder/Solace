@@ -186,3 +186,15 @@ coarse label from the 28 GoEmotions classes. The model's score is an uncalibrate
 score; it is **not** a calibrated measure of emotional intensity or clinical severity.
 Install optional CPU inference dependencies with
 `python -m pip install ".[ml]" --extra-index-url https://download.pytorch.org/whl/cpu`.
+
+**Emotion output is never a safety signal.** The GoEmotions model labelled “I just want to sleep
+and not wake up” as fine label `desire` / coarse label `positive`, and “everyone would be better
+off without me” as `positive`. Never use emotion output to soften, redirect, or override the
+Safety Sentinel level; safety screening is performed independently by `SafetyGate`.
+
+The normalizer maps only the configured ASCII leetspeak characters (`0`, `1`, `3`, `4`, `5`, and
+`$`), plus the documented Unicode and punctuation variants. Other digit/symbol substitutions,
+spaced-letter obfuscation, and cross-script lookalikes are known bypasses. Non-U+200B format
+characters are stripped and can join adjacent words when used at a word boundary. Normalization
+is not a substitute for broad pattern-family coverage: for example, `k1ll mys3lf` correctly
+normalizes to `kill myself`, but still requires a bare self-harm expression rule to match.

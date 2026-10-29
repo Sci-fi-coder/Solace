@@ -10,6 +10,46 @@
 
 ---
 
+## Session: 2026-10-29 — Safety phrase-family coverage
+
+### Done
+- Added English and Hinglish passive-ideation families for sleep/not waking, disappearance,
+  better-off-dead/no-reason-to-live, inability to continue, and gender/spelling variants.
+- Added English, Hinglish, and normalized-leetspeak explicit self-harm expression families,
+  including bare fragments. Preserved elevated classifications for urge-framed self-harm language.
+- Added hard-negative and positive-paraphrase cases to the safety evaluation dataset and regression
+  tests. None of the hard negatives fired.
+- Updated `scripts/try_layer1.py` with explicit `--with-llm`, `--no-emotion`, and `--verbose`
+  options. Default results contain only safety level, reasons, degraded status, classifier provider,
+  and classifier model.
+- Documented that GoEmotions labelled “I just want to sleep and not wake up” as fine label
+  `desire` / coarse label `positive`, and “everyone would be better off without me” as `positive`.
+  Emotion output is never a safety signal and must never soften, redirect, or override safety.
+
+### Verification
+- Test-first, before pattern/code changes: 105 examples; crisis recall 0.966 (28/29), crisis
+  precision 1.000 (28/28), none false-positive rate 0.000 (0/35). The confusion matrix showed
+  two elevated misses and one crisis miss.
+- After fixes: 129 examples; crisis recall 1.000 (36/36), crisis precision 1.000 (36/36), and
+  none false-positive rate 0.000 (0/42).
+- Focused safety and CLI tests: 75 passed, 1 deselected.
+- Full `pytest -q`: 167 passed, 1 deselected. `ruff check .` and `git diff --check`: passed.
+
+### Known issues
+- `k1ll mys3lf` normalized successfully to `kill myself`; the original miss was a missing bare
+  expression pattern, not a normalization failure.
+- The normalizer translates only the configured ASCII leetspeak characters (`0`, `1`, `3`, `4`,
+  `5`, `$`). Other substitutions, spaced-letter obfuscation, and cross-script lookalikes remain
+  outside its coverage. Removing non-U+200B format characters at a word boundary can also join
+  adjacent words.
+- Safety rules remain a screening floor, not a clinically validated detector.
+
+### Next
+- Continue Layer 1 safety/emotion work only. Review unsupported obfuscation and Unicode-confusable
+  handling as a separate task; do not begin Layer 2.
+
+---
+
 ## Session: 2026-10-29 — Unicode safety normalization
 
 ### Done

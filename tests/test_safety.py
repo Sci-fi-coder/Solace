@@ -135,6 +135,92 @@ def test_normalization_handles_repeated_letters_typos_and_leetspeak() -> None:
     """Text normalization handles common obfuscations before matching patterns."""
     assert normalize_text("I waaaant to k1ll myself!!!") == "i want to kill myself"
     assert classify_rules("I want to k1ll myself.")[0] == SafetyLevel.crisis
+    assert normalize_text("k1ll mys3lf") == "kill myself"
+    assert classify_rules("k1ll mys3lf")[0] == SafetyLevel.crisis
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "ab aur nahi jee sakta",
+        "I just want to sleep and not wake up",
+        "I wish I could disappear for good",
+        "There is no reason to live anymore",
+        "no reason to live",
+        "I can't go on living anymore",
+        "I can't take it anymore",
+        "main jeena nahi chahti",
+        "Main jeena nahi chahta",
+        "ab aur nahi jee sakti",
+        "bas sab khatam",
+        "main sab khatam kar du",
+        "everyone would be better off without me",
+    ],
+)
+def test_passive_ideation_family_is_elevated(message: str) -> None:
+    """English and Hinglish passive-ideation paraphrases receive elevated screening."""
+    assert classify_rules(message)[0] == SafetyLevel.elevated
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "kill myself",
+        "end my life",
+        "hurt myself",
+        "k1ll mys3lf",
+        "h4rm mys3lf",
+        "3nd my l1fe",
+        "Main khud ko maarna chahta hu",
+        "Main apni jaan le lunga",
+    ],
+)
+def test_explicit_self_harm_family_is_crisis(message: str) -> None:
+    """Bare, leetspeak, and Hinglish self-harm expressions receive crisis screening."""
+    assert classify_rules(message)[0] == SafetyLevel.crisis
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I want to sleep in and not wake up before noon on Sunday",
+        "my phone died, I can't live without charging it lol",
+        "jee bhar ke khaya",
+        "main thak gaya hoon, bas chai chahiye",
+    ],
+)
+def test_passive_ideation_hard_negatives_remain_none(message: str) -> None:
+    """Benign sleep, phone, and Hinglish phrases do not trigger passive-ideation rules."""
+    assert classify_rules(message)[0] == SafetyLevel.none
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "this heat is killing me",
+        "exam dekh ke main mar gaya yaar",
+        "this deadline is killing me",
+    ],
+)
+def test_self_harm_idioms_remain_none(message: str) -> None:
+    """Everyday killing/death idioms do not trigger explicit self-harm rules."""
+    assert classify_rules(message)[0] == SafetyLevel.none
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("I feel like hurting myself when stressed.", SafetyLevel.elevated),
+        ("I want to hurt myself when overwhelmed.", SafetyLevel.elevated),
+        ("mujhe khud ko hurt karne ka urge hai", SafetyLevel.elevated),
+    ],
+)
+def test_non_crisis_self_harm_urges_remain_elevated(
+    message: str,
+    expected: SafetyLevel,
+) -> None:
+    """Explicit self-harm expression matching does not upgrade urge framing to crisis."""
+    assert classify_rules(message)[0] == expected
 
 
 @pytest.mark.parametrize(

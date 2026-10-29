@@ -8,6 +8,12 @@ crisis:
     - 'main khud ko nuksan pahunchane wala hu'
     - 'main khud ko nuksan pahunchane wali hu'
     - 'main apni jaan lene ka plan bana raha hu'
+  explicit_self_harm:
+    - '(?:main )?khud ko (?:maar|mar)(?:na| (?:dunga|dungi|dun|doon))'
+    - '(?:main )?apni jaan (?:lena|le (?:lunga|lungi|dunga|dungi)|de dena)'
+    - '(?:main )?khud ko (?:hurt|harm) karna'
+    - '(?:main )?khud ko (?:chot|nuksan) pahunchana'
+    - '(?:main )?khud ko kaatna'
   harm_others:
     - 'main usko maar dunga'
     - 'main usko maar dungi'
@@ -24,6 +30,10 @@ elevated:
     - 'mere bina sab khush honge'
     - 'jeene ka mann nahi karta'
     - 'ab jeene ka koi matlab nahi'
+    - '(?:ab )?(?:main )?(?:aur )?(?:nahi|nahin|nhi) (?:jee|ji) sak(?:ta|ti|te)(?: hu|hun|hoon)?'
+    - '(?:main )?(?:jeena|jina) (?:nahi|nahin|nhi) chah(?:ta|ti|te|ata|ati)(?: hu|hun|hoon)?'
+    - '(?:bas )?(?:main )?(?:sab )?khatam kar (?:du|dun|doon)(?:ga|gi)?'
+    - '(?:bas )?sab khatam(?: ho (?:gaya|gya|gayi))?'
   hopelessness:
     - 'ab kuch theek nahi hoga'
     - 'ab kuch behtar nahi hoga'

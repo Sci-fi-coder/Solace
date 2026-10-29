@@ -235,3 +235,27 @@ deleting a word separator can merge tokens and evade a rule.
 **Pattern audit:** English safety expressions use only ASCII apostrophes; Hinglish expressions
 have no apostrophes; neither YAML file contains non-ASCII punctuation. No pattern edits were
 necessary.
+
+## 2026-10-29 — Safety phrase families and emotion isolation
+
+### D-033: Expand safety coverage with phrase families and keep emotion out of safety decisions
+**Decision:** Add reviewable English and Hinglish YAML families for passive ideation and explicit
+self-harm expressions, including normalized leetspeak and bare fragments. Suppress explicit-family
+crisis matches when the phrase is locally framed as an elevated urge, preserving existing
+non-crisis self-harm-urge behavior. Keep the GoEmotions output entirely separate from safety
+classification; it must never be used to soften, redirect, or override the Safety Sentinel level.
+**Rationale:** Evaluation found missing phrase coverage, not a leetspeak normalization defect:
+`k1ll mys3lf` already normalizes to `kill myself`, but the previous crisis patterns required
+surrounding intent or additional context. The GoEmotions model can map passive-ideation text to
+positive/desire labels, so its emotion result is not safe to treat as a safety signal.
+**Verification:** Added positive paraphrases and hard negatives for both phrase families. The
+final 129-example rules-only evaluation achieved crisis recall 1.000 (36/36), crisis precision
+1.000 (36/36), and none false-positive rate 0.000 (0/42).
+
+### D-034: Make Layer 1 smoke-test model use explicit
+**Decision:** Keep the smoke script rules-only for safety by default, enable the LLM safety
+classifier only with `--with-llm`, support skipping emotion inference with `--no-emotion`, and
+reserve complete output for `--verbose`.
+**Rationale:** Local safety-rule checks should not require an LLM call, while model downloads and
+full diagnostic output should be explicit user choices. Existing provider and model defaults are
+unchanged.

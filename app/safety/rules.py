@@ -30,6 +30,15 @@ _NEGATION = re.compile(
 )
 _SENTENCE_BOUNDARY = re.compile(r"[.!?;\n]")
 _REPEATED_LETTER = re.compile(r"([a-z])\1{2,}")
+_SELF_HARM_URGE_PREFIX = re.compile(
+    r"(?:\b(?:want|wanna|wish) to|\bfeel(?:ing)? like|"
+    r"\b(?:have )?(?:an? )?urges? to|\b(?:am )?(?:keep )?thinking about|"
+    r"\bthoughts? of)\s*$"
+)
+_SELF_HARM_URGE_SUFFIX = re.compile(
+    r"^\s+(?:karne ka (?:mann|man) karta(?: hai)?|"
+    r"karne ki (?:ichha|iccha) hai|ka (?:urge|mann) hai)\b"
+)
 
 
 class PatternEntry(TypedDict):
@@ -120,6 +129,27 @@ def _is_negated(text: str, match_start: int) -> bool:
     return _NEGATION.search(prefix) is not None
 
 
+def _is_self_harm_urge_context(text: str, match_start: int, match_end: int) -> bool:
+    """Keep elevated self-harm urges from becoming crisis on a bare phrase match."""
+    sentence_start = max(
+        (boundary.end() for boundary in _SENTENCE_BOUNDARY.finditer(text, 0, match_start)),
+        default=0,
+    )
+    sentence_end = next(
+        (
+            boundary.start()
+            for boundary in _SENTENCE_BOUNDARY.finditer(text, match_end)
+        ),
+        len(text),
+    )
+    prefix = text[sentence_start:match_start]
+    suffix = text[match_end:sentence_end]
+    return (
+        _SELF_HARM_URGE_PREFIX.search(prefix) is not None
+        or _SELF_HARM_URGE_SUFFIX.match(suffix) is not None
+    )
+
+
 def classify_rules(message: str) -> tuple[SafetyLevel, list[str]]:
     """Return the highest matching rule level and stable reason codes."""
     normalized = normalize_text(message)
@@ -127,7 +157,14 @@ def classify_rules(message: str) -> tuple[SafetyLevel, list[str]]:
     crisis_reasons = [
         code
         for code, pattern in patterns["crisis"]
-        if any(not _is_negated(normalized, match.start()) for match in pattern.finditer(normalized))
+        if any(
+            not _is_negated(normalized, match.start())
+            and not (
+                code.endswith(":explicit_self_harm")
+                and _is_self_harm_urge_context(normalized, match.start(), match.end())
+            )
+            for match in pattern.finditer(normalized)
+        )
     ]
     if crisis_reasons:
         return SafetyLevel.crisis, list(dict.fromkeys(crisis_reasons))
