@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
@@ -39,13 +40,41 @@ class PatternEntry(TypedDict):
 
 
 def normalize_text(text: str) -> str:
-    """Normalize casing, common obfuscations, repeated letters, and punctuation."""
-    normalized = text.lower().translate(_LEET_TRANSLATION)
+    """Normalize Unicode, casing, common obfuscations, and punctuation."""
+    quote_normalized = "".join(
+        "'" if _is_quote_variant(character) else character for character in text
+    )
+    normalized_characters: list[str] = []
+    for character in unicodedata.normalize("NFKC", quote_normalized):
+        category = unicodedata.category(character)
+        name = unicodedata.name(character, "")
+        if character == "\u200b":
+            normalized_characters.append(" ")
+        elif (
+            category == "Cf"
+            or name == "COMBINING GRAPHEME JOINER"
+            or "VARIATION SELECTOR" in name
+        ):
+            continue
+        elif character.isspace():
+            normalized_characters.append(" ")
+        else:
+            normalized_characters.append(character)
+
+    normalized = "".join(normalized_characters).lower().translate(_LEET_TRANSLATION)
     for typo, correction in _TYPO_REPLACEMENTS.items():
         normalized = re.sub(rf"\b{re.escape(typo)}\b", correction, normalized)
     normalized = _REPEATED_LETTER.sub(r"\1", normalized)
     normalized = re.sub(r"[^\w\s']", " ", normalized)
     return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _is_quote_variant(character: str) -> bool:
+    """Return whether a Unicode character is an apostrophe or quotation mark."""
+    name = unicodedata.name(character, "")
+    return character in {"`", "´"} or any(
+        variant in name for variant in ("APOSTROPHE", "QUOTATION", "PRIME")
+    )
 
 
 @lru_cache(maxsize=1)

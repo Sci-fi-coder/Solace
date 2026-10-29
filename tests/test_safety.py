@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -133,6 +135,44 @@ def test_normalization_handles_repeated_letters_typos_and_leetspeak() -> None:
     """Text normalization handles common obfuscations before matching patterns."""
     assert normalize_text("I waaaant to k1ll myself!!!") == "i want to kill myself"
     assert classify_rules("I want to k1ll myself.")[0] == SafetyLevel.crisis
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("I don't want to be alive anymore.", SafetyLevel.elevated),
+        ("I don’t want to be alive anymore.", SafetyLevel.elevated),
+        ("I don‘t want to be alive anymore.", SafetyLevel.elevated),
+        ("I donʼt want to be alive anymore.", SafetyLevel.elevated),
+        ("I don`t want to be alive anymore.", SafetyLevel.elevated),
+        ("I don´t want to be alive anymore.", SafetyLevel.elevated),
+        ("I’m not going to kill myself", SafetyLevel.none),
+        ("I won’t hurt anyone", SafetyLevel.none),
+        ("Ｉ ｄｏｎ＇ｔ ｗａｎｔ ｔｏ ｂｅ ａｌｉｖｅ ａｎｙｍｏｒｅ.", SafetyLevel.elevated),
+        ("I don't want to be alive\u200b anymore.", SafetyLevel.elevated),
+        ("I\u00a0don't\u00a0want\u00a0to\u00a0be\u00a0alive\u00a0anymore.", SafetyLevel.elevated),
+        ("Ｉ ｗｉｌｌ ｋｉｌｌ ｍｙｓｅｌｆ ｔｏｎｉｇｈｔ.", SafetyLevel.crisis),
+        ("I\u200bwill\u200bkill\u200bmyself\u200btonight.", SafetyLevel.crisis),
+        ("I will k\u2060ill myself tonight.", SafetyLevel.crisis),
+        ("I\u00a0will\u00a0kill\u00a0myself\u00a0tonight.", SafetyLevel.crisis),
+    ],
+)
+def test_unicode_safety_variants(message: str, expected: SafetyLevel) -> None:
+    """Unicode punctuation and spacing preserve the intended rule classification."""
+    assert classify_rules(message)[0] == expected
+
+
+def test_dataset_messages_match_their_generated_curly_apostrophe_variants() -> None:
+    """Every evaluation phrase keeps its exact rule result when apostrophes turn curly."""
+    dataset_path = Path(__file__).parent / "data" / "safety_eval.jsonl"
+    messages = [
+        json.loads(line)["text"]
+        for line in dataset_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    for message in messages:
+        curly_message = message.replace("'", "’")
+        assert classify_rules(curly_message) == classify_rules(message), message
 
 
 @pytest.mark.parametrize(

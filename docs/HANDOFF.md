@@ -10,6 +10,41 @@
 
 ---
 
+## Session: 2026-10-29 — Unicode safety normalization
+
+### Done
+- Fixed rules normalization to apply NFKC, normalize Unicode apostrophe/quotation variants,
+  normalize Unicode whitespace, and remove zero-width format characters before rule and negation
+  matching. U+200B is mapped to a normal space so it cannot merge adjacent words.
+- Added synthetic evaluation and regression cases for straight/curly/left/modifier/backtick/acute
+  apostrophes, negated intent, fullwidth text, zero-width characters, and non-breaking spaces.
+- Verified every evaluation phrase has the same exact rule result after straight apostrophes are
+  programmatically changed to curly apostrophes.
+- Audited both safety pattern YAML files: English contains 16 expressions with ASCII apostrophes;
+  Hinglish has no apostrophes; neither file contains non-ASCII punctuation. No YAML changes were
+  needed.
+
+### Verification
+- Before the fix, the 102-example rules-only evaluation had crisis recall 0.964 (27/28),
+  precision 1.000 (27/27), and none false-positive rate 0.000 (0/35). Seven added Unicode
+  examples failed: five apostrophe variants and the fullwidth elevated and crisis phrases.
+- After the fix, rules-only evaluation: 102 examples; crisis recall 1.000 (28/28), precision
+  1.000 (28/28), none false-positive rate 0.000 (0/35).
+- `pytest -q`: 132 passed, 1 deselected.
+- `ruff check .` and `git diff --check`: passed.
+
+### Known issues
+- NFKC and punctuation/space normalization do not address visually confusable letters from
+  different scripts. Other zero-width format characters are stripped; if one replaces a word
+  boundary rather than being inserted within a word, stripping may join adjacent words.
+- Safety rules are not clinically validated.
+
+### Next
+- Continue Layer 1 safety/emotion work only; do not begin Layer 2 without authorization. Review
+  Unicode-confusable and invisible-separator robustness as a separate Layer 1 task.
+
+---
+
 ## Session: 2026-10-28 — Layer 1 Safety and Emotion
 
 ### Done

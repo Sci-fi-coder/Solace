@@ -217,3 +217,21 @@ stores successful structured results under `.cache/`, keyed by a SHA-256 digest 
 current message, and recent user context.
 **Rationale:** Synthetic evaluation should not spend free-tier quota on repeated runs. Including
 recent context prevents a prior-turn change from incorrectly reusing a multi-turn classification.
+
+## 2026-10-29 — Unicode safety normalization
+
+### D-032: Normalize Unicode before safety rule matching
+**Decision:** Normalize incoming safety text with NFKC before matching; canonicalize Unicode
+apostrophe and quotation characters to ASCII apostrophe, convert Unicode whitespace to ASCII
+spaces, map U+200B ZERO WIDTH SPACE to an ASCII space, and remove other zero-width format
+characters and default-ignorable marks (including variation selectors and the combining
+grapheme joiner).
+**Rationale:** Visually equivalent punctuation and fullwidth text must not bypass deterministic
+safety patterns or negation checks. Treating U+200B as whitespace preserves word boundaries,
+while removing other format characters recovers words split internally by invisible formatting.
+**Alternative:** Add pattern-specific Unicode spellings or delete every invisible separator
+without regard to token boundaries. Rejected because pattern-specific variants are brittle and
+deleting a word separator can merge tokens and evade a rule.
+**Pattern audit:** English safety expressions use only ASCII apostrophes; Hinglish expressions
+have no apostrophes; neither YAML file contains non-ASCII punctuation. No pattern edits were
+necessary.

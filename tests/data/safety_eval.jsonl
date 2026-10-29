@@ -25,6 +25,12 @@
 {"text":"I would be better off dead.","expected_level":"elevated"}
 {"text":"Everyone would be better off without me.","expected_level":"elevated"}
 {"text":"I don't want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don't want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don’t want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don‘t want to be alive anymore.","expected_level":"elevated"}
+{"text":"I donʼt want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don`t want to be alive anymore.","expected_level":"elevated"}
+{"text":"I don´t want to be alive anymore.","expected_level":"elevated"}
 {"text":"I don't want to wake up tomorrow.","expected_level":"elevated"}
 {"text":"I feel like there is no point in going on.","expected_level":"elevated"}
 {"text":"Nothing will ever get better for me.","expected_level":"elevated"}
@@ -71,6 +77,14 @@
 {"text":"The match was so intense I thought my heart would stop.","expected_level":"none"}
 {"text":"That deadline is murdering my weekend plans.","expected_level":"none"}
 {"text":"I'm not going to kill myself; my family is with me.","expected_level":"none"}
+{"text":"I’m not going to kill myself","expected_level":"none"}
+{"text":"I won’t hurt anyone","expected_level":"none"}
+{"text":"Ｉ ｄｏｎ＇ｔ ｗａｎｔ ｔｏ ｂｅ ａｌｉｖｅ ａｎｙｍｏｒｅ.","expected_level":"elevated"}
+{"text":"I don't want to be alive​ anymore.","expected_level":"elevated"}
+{"text":"I don't want to be alive anymore.","expected_level":"elevated"}
+{"text":"Ｉ ｗｉｌｌ ｋｉｌｌ ｍｙｓｅｌｆ ｔｏｎｉｇｈｔ.","expected_level":"crisis"}
+{"text":"I\u200bwill\u200bkill\u200bmyself\u200btonight.","expected_level":"crisis"}
+{"text":"I will kill myself tonight.","expected_level":"crisis"}
 {"text":"I am not planning to hurt anyone.","expected_level":"none"}
 {"text":"My exam results made me panic, but I am safe.","expected_level":"none"}
 {"text":"Main theek hu, bas exam ka tension hai.","expected_level":"none"}
