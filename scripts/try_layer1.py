@@ -10,6 +10,7 @@ from app.contracts import Message
 from app.emotion import EmotionRecognizer, HuggingFaceEmotionClassifier
 from app.safety.classifier import GatewaySafetyClassifier
 from app.safety.responses import response_template
+from app.safety.rules import classify_rules
 from app.safety.sentinel import SafetyGate
 from app.tracing.recorder import TraceRecorder
 
@@ -32,6 +33,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print complete safety, emotion, and trace JSON.",
     )
+    session_group = parser.add_mutually_exclusive_group()
+    session_group.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Evaluate each input in a new session (the default unless --session is used).",
+    )
+    session_group.add_argument(
+        "--session",
+        metavar="SESSION_ID",
+        help="Reuse a named session across inputs to exercise sticky escalation.",
+    )
     return parser.parse_args(argv)
 
 
@@ -45,12 +57,13 @@ def main(argv: list[str] | None = None) -> None:
         from sqlalchemy import create_engine
 
         from app.llm.gateway import LLMGateway
+        from app.storage.models import create_all
 
         engine = create_engine("sqlite:///:memory:")
+        create_all(engine)
         classifier = GatewaySafetyClassifier(LLMGateway.from_settings(engine=engine))
     history: list[Message] = []
     session_state: dict[str, object] = {}
-    session_id = str(uuid4())
     emotion_classifier = None if args.no_emotion else HuggingFaceEmotionClassifier()
     try:
         while True:
@@ -62,6 +75,15 @@ def main(argv: list[str] | None = None) -> None:
                 break
             if not message:
                 continue
+            if args.session is None or args.fresh:
+                active_history: list[Message] = []
+                active_session_state: dict[str, object] = {}
+                session_id = str(uuid4())
+            else:
+                active_history = history
+                active_session_state = session_state
+                session_id = args.session
+            rule_level, _ = classify_rules(message)
             recorder = TraceRecorder(
                 turn_id=str(uuid4()),
                 session_id=session_id,
@@ -69,8 +91,8 @@ def main(argv: list[str] | None = None) -> None:
             )
             safety = SafetyGate(classifier, recorder).check(
                 message,
-                history,
-                session_state,
+                active_history,
+                active_session_state,
             )
             emotion = (
                 EmotionRecognizer(
@@ -97,6 +119,8 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     json.dumps(
                         {
+                            "rule_level": rule_level.value,
+                            "final_level": safety.level.value,
                             "safety": safety.model_dump(mode="json"),
                             "emotion": emotion.model_dump(mode="json") if emotion else None,
                             "fixed_template": response_template(safety.level),
@@ -109,6 +133,8 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     json.dumps(
                         {
+                            "rule_level": rule_level.value,
+                            "final_level": safety.level.value,
                             "level": safety.level.value,
                             "reasons": safety.reasons,
                             "degraded": safety.degraded,
@@ -117,7 +143,7 @@ def main(argv: list[str] | None = None) -> None:
                         }
                     )
                 )
-            history.append(Message(role="user", content=message))
+            active_history.append(Message(role="user", content=message))
     finally:
         if engine is not None:
             engine.dispose()

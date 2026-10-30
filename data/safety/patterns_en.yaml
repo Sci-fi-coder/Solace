@@ -40,6 +40,10 @@ crisis:
     - 'i''m going to hurt (?:him|her|them|someone|people)'
     - 'i plan to hurt (?:him|her|them|someone|people)'
     - 'i want to hurt (?:him|her|them|someone|people)'
+  ending_it_with_intent:
+    - 'i (?:am |''m )?(?:thinking of|thinking about|planning to|plan to|going to|want to|intend to|decided to|will) (?:end|ending) it(?: all)?'
+    - '(?:thinking of|thinking about|planning to|plan to|going to|want to|intend to) (?:end|ending) it(?: all)?'
+    - 'i(?: am|''m)? (?:ending|end) it(?: all)? (?:tonight|today|soon)'
 elevated:
   passive_ideation:
     - 'i wish i were dead'
@@ -53,11 +57,23 @@ elevated:
     - 'i want to disappear forever'
     - 'i (?:just )?(?:want|wanna|wish) to sleep and (?:not|never) wake up(?: again)?'
     - 'i (?:wish i could|hope i can) sleep and not wake up(?: again)?'
-    - 'i (?:wish i could|want to|wanna) disappear(?: forever| for good| completely)?'
+    - 'i (?:wish i could|want to|wanna) (?:just )?disappear(?: forever| for good| completely)?'
     - '(?:i|everyone) (?:would|will|d) be better off (?:dead|without me)'
     - 'better off dead'
     - '(?:i have|there is|there''s|theres) no reason (?:for me )?to (?:live|go on)'
     - 'no reason (?:for me )?to (?:live|go on)'
+  disappearance:
+    - 'i (?:wish i could|want to|wanna) (?:just )?(?:disappear|vanish)(?: from (?:everyone''s|everyones) life| forever| for good| completely)?'
+    - 'i wish i could fade away(?: and never come back)?'
+    - 'i (?:feel like|want to) fad(?:e|ing) away(?: from (?:everyone''s|everyones) life| and never come back)?'
+    - 'i feel like disappearing(?: from (?:everyone''s|everyones) life)?'
+  better_off_without_me:
+    - '(?:no one|nobody) would (?:even )?notice if i (?:was|were|am) gone'
+    - '(?:no one|nobody) would miss me if i (?:was|were|am) gone'
+    - 'everyone would be better off if i (?:was|were|am|wasn''t|weren''t) here'
+    - 'everyone would be better off if i (?:was|were|am) gone'
+    - 'the world would be better off without me'
+    - 'people would be better off without me'
   hopelessness:
     - 'there is no point in going on'
     - 'there is no point anymore'

@@ -10,6 +10,46 @@
 
 ---
 
+## Session: 2026-10-30 — Final Layer 1 phrase coverage
+
+### Done
+- Added the three reported misses, common paraphrases, per-family hard negatives, and required
+  regression phrases to the synthetic safety evaluation data.
+- Added YAML-only disappearance, better-off-without-me, and intentional ending-it phrase families.
+- Updated `try_layer1.py` to show pre-sticky `rule_level` and `final_level`, use a fresh session per
+  input by default, and support explicit `--fresh` or sticky `--session SESSION_ID` testing.
+- Added evaluation output for classifier-caught rule misses and classifier-introduced false alarms.
+- Initialized the existing provider-usage schema in LLM-enabled Layer 1 scripts so live evaluation
+  can run with its in-memory SQLite gateway.
+- Rules cannot cover all paraphrases. The LLM classifier is the semantic layer; rules are the
+  floor; when the classifier is unavailable the system runs degraded and this is a known limitation.
+
+### Verification
+- Baseline `pytest -q`: 167 passed, 1 deselected.
+- Before YAML patterns, rules-only evaluation: 151 examples; crisis recall 0.900 (36/40),
+  crisis precision 1.000 (36/36), none false-positive rate 0.000 (0/53).
+- After YAML patterns, rules-only evaluation: 151 examples; crisis recall 1.000 (40/40),
+  crisis precision 1.000 (40/40), none false-positive rate 0.000 (0/53).
+- Focused safety/CLI/eval tests: 105 passed, 1 deselected; `ruff check .` and
+  `git diff --check` passed.
+- Rules-only 40-example sample: crisis recall/precision 1.000 (25/25), none false-positive rate
+  0.000 (0/11).
+- Live rules+LLM 40-example sample: same metrics; no classifier-caught rules misses and no new
+  false alarms. 8 successful Gemini results and 10 Groq fallback results; 22 classifier failures
+  degraded to rules-only.
+- Final `pytest -q`: 195 passed, 1 deselected; `ruff check .` and `git diff --check` passed.
+
+### Known issues
+- The live sample used provider fallback and degraded operation for 22/40 cases; results reflect
+  the configured provider availability during this run.
+- Safety rules and model outputs are screening aids, not clinically validated detectors.
+
+### Next
+- Layer 1 final fix is complete. Begin Layer 2 only in a separate session after this change is
+  committed and pushed.
+
+---
+
 ## Session: 2026-10-29 — Safety phrase-family coverage
 
 ### Done

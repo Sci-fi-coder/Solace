@@ -259,3 +259,16 @@ reserve complete output for `--verbose`.
 **Rationale:** Local safety-rule checks should not require an LLM call, while model downloads and
 full diagnostic output should be explicit user choices. Existing provider and model defaults are
 unchanged.
+
+### D-035: Isolate smoke-test inputs unless a session is named
+**Decision:** Use fresh sessions per input by default; `--session SESSION_ID` explicitly reuses
+sticky state, while `--fresh` makes the default isolation explicit.
+**Rationale:** Manual phrase checks must expose the current rule result without prior crisis turns
+masking it through sticky escalation.
+
+### D-036: Initialize the temporary evaluation gateway database
+**Decision:** Create the existing SQLAlchemy tables before initializing an LLM gateway in the
+Layer 1 smoke and safety-evaluation scripts.
+**Rationale:** The gateway loads and enforces its provider daily-call counter from `provider_usage`;
+an in-memory SQLite engine without that table aborts live evaluation before classification.
+The initializer reuses the storage schema and leaves provider/model defaults unchanged.

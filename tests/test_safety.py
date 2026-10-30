@@ -165,6 +165,69 @@ def test_passive_ideation_family_is_elevated(message: str) -> None:
 @pytest.mark.parametrize(
     "message",
     [
+        "I wish I could just disappear",
+        "I wish I could vanish from everyone's life",
+        "I want to fade away and never come back",
+        "I feel like fading away from everyone's life",
+    ],
+)
+def test_disappearance_wishes_are_elevated(message: str) -> None:
+    """First-person disappearance wishes receive elevated screening."""
+    assert classify_rules(message)[0] == SafetyLevel.elevated
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "no one would even notice if I was gone",
+        "Nobody would miss me if I were gone",
+        "Everyone would be better off if I weren't here",
+        "The world would be better off without me",
+    ],
+)
+def test_better_off_without_me_wishes_are_elevated(message: str) -> None:
+    """First-person absence and better-off wishes receive elevated screening."""
+    assert classify_rules(message)[0] == SafetyLevel.elevated
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "thinking of ending it all tonight",
+        "I'm planning to end it all today",
+        "I am going to end it soon",
+        "I'm ending it all tonight",
+    ],
+)
+def test_ending_it_with_intent_or_time_is_crisis(message: str) -> None:
+    """Intent or near-term timing with ending-it language receives crisis screening."""
+    assert classify_rules(message)[0] == SafetyLevel.crisis
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I want to end this meeting",
+        "I'm ending my diet tonight",
+        "The show ended it all with a twist",
+        "The magician disappeared behind the curtain",
+        "The file disappeared after the reboot",
+        "The sun disappeared behind the clouds",
+        "The team would be better off without the broken printer",
+        "Everyone would be better off if the server were replaced",
+        "The project would be better off without the outdated dependency",
+        "I'm dying of laughter",
+        "I could kill for a pizza right now",
+    ],
+)
+def test_new_safety_family_hard_negatives_remain_none(message: str) -> None:
+    """Benign disappearance, better-off, and ending-it contexts remain unflagged."""
+    assert classify_rules(message)[0] == SafetyLevel.none
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "kill myself",
         "end my life",
         "hurt myself",

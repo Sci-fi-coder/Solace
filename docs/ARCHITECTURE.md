@@ -180,6 +180,9 @@ become crisis matches. Idioms such as "this exam is killing me" and "I could die
 embarrassment" do not match the explicit self-harm/intent patterns. This rule set is a safety
 floor, not a clinically validated detector.
 
+Rules cannot cover all paraphrases. The LLM classifier is the semantic layer; rules are the
+floor; when the classifier is unavailable the system runs degraded and this is a known limitation.
+
 `EmotionRecognizer` lazily loads `SamLowe/roberta-base-go_emotions` on first inference and accepts
 an injected classifier for deterministic tests. It returns the fine label plus an aggregated
 coarse label from the 28 GoEmotions classes. The model's score is an uncalibrated classification

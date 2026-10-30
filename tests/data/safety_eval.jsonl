@@ -21,6 +21,23 @@
 {"text":"I already wrote goodbye letters and gave away the things I care about.","expected_level":"crisis"}
 {"text":"I have everything ready to end my life tonight.","expected_level":"crisis"}
 {"text":"I don't think I'll make it through the night; I've decided what to do.","expected_level":"crisis"}
+{"text":"I wish I could just disappear","expected_level":"elevated"}
+{"text":"no one would even notice if I was gone","expected_level":"elevated"}
+{"text":"thinking of ending it all tonight","expected_level":"crisis"}
+{"text":"I'm planning to end it all today","expected_level":"crisis"}
+{"text":"I wish I could vanish from everyone's life","expected_level":"elevated"}
+{"text":"Nobody would miss me if I were gone","expected_level":"elevated"}
+{"text":"I want to end this meeting","expected_level":"none"}
+{"text":"I'm ending my diet tonight","expected_level":"none"}
+{"text":"The show ended it all with a twist","expected_level":"none"}
+{"text":"The magician disappeared behind the curtain","expected_level":"none"}
+{"text":"The file disappeared after the reboot","expected_level":"none"}
+{"text":"The sun disappeared behind the clouds","expected_level":"none"}
+{"text":"The team would be better off without the broken printer","expected_level":"none"}
+{"text":"Everyone would be better off if the server were replaced","expected_level":"none"}
+{"text":"The project would be better off without the outdated dependency","expected_level":"none"}
+{"text":"I'm dying of laughter","expected_level":"none"}
+{"text":"I could kill for a pizza right now","expected_level":"none"}
 {"text":"I wish I were dead.","expected_level":"elevated"}
 {"text":"I would be better off dead.","expected_level":"elevated"}
 {"text":"Everyone would be better off without me.","expected_level":"elevated"}
@@ -106,6 +123,11 @@
 {"text":"I wish I could disappear for good","expected_level":"elevated"}
 {"text":"There is no reason to live anymore","expected_level":"elevated"}
 {"text":"no reason to live","expected_level":"elevated"}
+{"text":"I wish I could fade away and never come back","expected_level":"elevated"}
+{"text":"I feel like fading away from everyone's life","expected_level":"elevated"}
+{"text":"Everyone would be better off if I weren't here","expected_level":"elevated"}
+{"text":"I am going to end it soon","expected_level":"crisis"}
+{"text":"I'm ending it all tonight","expected_level":"crisis"}
 {"text":"I can't go on living anymore","expected_level":"elevated"}
 {"text":"I can't take it anymore","expected_level":"elevated"}
 {"text":"Main jeena nahi chahta","expected_level":"elevated"}

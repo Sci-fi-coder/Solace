@@ -21,6 +21,7 @@ from app.safety.classifier import (
     SafetyClassifier,
 )
 from app.safety.sentinel import SafetyGate
+from app.storage.models import create_all
 
 LEVELS = [SafetyLevel.none, SafetyLevel.elevated, SafetyLevel.crisis]
 DATA_PATH = Path(__file__).resolve().parents[1] / "tests" / "data" / "safety_eval.jsonl"
@@ -41,6 +42,9 @@ class CachedClassifier:
         self._cache_path = cache_path
         self._model_key = model_key
         self._cache: dict[str, object] = {}
+        self.live_calls = 0
+        self.cache_hits = 0
+        self.providers: dict[str, int] = {}
         if cache_path.exists():
             payload = json.loads(cache_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
@@ -61,8 +65,11 @@ class CachedClassifier:
         key = hashlib.sha256(inputs.encode("utf-8")).hexdigest()
         cached = self._cache.get(key)
         if cached is not None:
+            self.cache_hits += 1
             return ClassifierResult.model_validate(cached)
         result = self._delegate.classify(message, history)
+        self.live_calls += 1
+        self.providers[result.provider] = self.providers.get(result.provider, 0) + 1
         self._cache[key] = result.model_dump(mode="json")
         self._write_cache()
         return result
@@ -154,6 +161,41 @@ def _print_metrics(label: str, samples: list[dict[str, str]], predicted: list[Sa
         print(f"{expected.value:>18} " + " ".join(f"{count:>9}" for count in counts))
 
 
+def _print_classifier_differences(
+    samples: list[dict[str, str]],
+    rules_predictions: list[SafetyLevel],
+    combined_predictions: list[SafetyLevel],
+) -> None:
+    """Report cases corrected by the classifier and new none-class false alarms."""
+    caught = [
+        sample["text"]
+        for sample, rules_level, combined_level in zip(
+            samples,
+            rules_predictions,
+            combined_predictions,
+            strict=True,
+        )
+        if rules_level != SafetyLevel(sample["expected_level"])
+        and combined_level == SafetyLevel(sample["expected_level"])
+    ]
+    false_alarms = []
+    for sample, rules_level, combined_level in zip(
+        samples,
+        rules_predictions,
+        combined_predictions,
+        strict=True,
+    ):
+        expected = SafetyLevel(sample["expected_level"])
+        if rules_level == expected and LEVELS.index(combined_level) > LEVELS.index(expected):
+            false_alarms.append(
+                f"{sample['text']} (expected {expected.value}, got {combined_level.value})"
+            )
+    print("\nLLM caught rules misses:")
+    print("\n".join(f"- {text}" for text in caught) if caught else "- none")
+    print("\nNew classifier false alarms:")
+    print("\n".join(f"- {text}" for text in false_alarms) if false_alarms else "- none")
+
+
 def main() -> None:
     """Run rules-only evaluation and the opt-in cached LLM comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -167,10 +209,12 @@ def main() -> None:
     samples = _read_samples(DATA_PATH, limit)
     if not samples:
         raise ValueError(f"No safety evaluation examples found in {DATA_PATH}.")
-    _print_metrics("Rules only", samples, _predict(samples, classifier=None))
+    rules_predictions = _predict(samples, classifier=None)
+    _print_metrics("Rules only", samples, rules_predictions)
 
     if args.with_llm:
         engine = create_engine("sqlite:///:memory:")
+        create_all(engine)
         gateway = LLMGateway.from_settings(engine=engine)
         model_key = "|".join(settings.get_fallback_chain(TaskKind.classify.value))
         classifier = CachedClassifier(
@@ -178,7 +222,13 @@ def main() -> None:
             args.cache,
             model_key,
         )
-        _print_metrics("Rules + LLM", samples, _predict(samples, classifier=classifier))
+        combined_predictions = _predict(samples, classifier=classifier)
+        _print_metrics("Rules + LLM", samples, combined_predictions)
+        _print_classifier_differences(samples, rules_predictions, combined_predictions)
+        print(
+            f"\nLive classifier calls: {classifier.live_calls}; "
+            f"cache hits: {classifier.cache_hits}; providers: {classifier.providers}"
+        )
         engine.dispose()
     else:
         print("\nRules + LLM: not run (pass --with-llm to opt in; default is rules-only).")

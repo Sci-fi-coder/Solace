@@ -6,9 +6,11 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
 from app.contracts import Message, SafetyLevel
 from app.safety.classifier import ClassifierResult
-from scripts.eval_safety import CachedClassifier
+from scripts.eval_safety import CachedClassifier, _print_classifier_differences
 
 
 class CountingClassifier:
@@ -58,3 +60,25 @@ def test_llm_evaluation_cache_uses_message_hash_and_model_without_storing_text(
     other_model = CachedClassifier(delegate, cache_path, "model-b")
     other_model.classify(message, [])
     assert delegate.calls == 2
+
+
+def test_llm_evaluation_reports_caught_misses_and_new_false_alarms(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Comparison output identifies corrections and classifier-only false alarms."""
+    samples = [
+        {"text": "Synthetic elevated phrase.", "expected_level": "elevated"},
+        {"text": "Synthetic benign phrase.", "expected_level": "none"},
+        {"text": "Synthetic over-escalated phrase.", "expected_level": "elevated"},
+    ]
+
+    _print_classifier_differences(
+        samples,
+        [SafetyLevel.none, SafetyLevel.none, SafetyLevel.elevated],
+        [SafetyLevel.elevated, SafetyLevel.elevated, SafetyLevel.crisis],
+    )
+
+    output = capsys.readouterr().out
+    assert "LLM caught rules misses:\n- Synthetic elevated phrase." in output
+    assert "New classifier false alarms:\n- Synthetic benign phrase." in output
+    assert "Synthetic over-escalated phrase. (expected elevated, got crisis)" in output
