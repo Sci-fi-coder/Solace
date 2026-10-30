@@ -27,6 +27,7 @@ dependencies = [
 
     # Utilities
     "python-dotenv>=1.0.0",       # Load .env files
+    "PyYAML>=6.0.2",              # Human-reviewable safety patterns and helplines
 ]
 
 [project.optional-dependencies]
@@ -44,15 +45,25 @@ rag = [
     "sentence-transformers>=3.0.0",
 ]
 
+ml = [
+    "torch>=2.6.0",
+    "transformers>=4.50.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "scripts*"]
+include = ["app*", "scripts*", "data*"]
+
+[tool.setuptools.package-data]
+data = ["safety/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = ["-m", "not slow"]
 log_cli = true
 log_cli_level = "WARNING"
+markers = ["slow: makes a real API call or downloads model weights"]
 
 [tool.ruff]
 line-length = 100

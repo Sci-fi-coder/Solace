@@ -24,6 +24,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+.cache/
 dist/
 build/
 *.egg-info/

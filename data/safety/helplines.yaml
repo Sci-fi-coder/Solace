@@ -1,0 +1,7 @@
+helplines:
+  - name: Find A Helpline directory
+    number: TODO_VERIFY
+    hours: Varies by local service
+    region: International
+    source_url: https://findahelpline.com/
+    verified: false

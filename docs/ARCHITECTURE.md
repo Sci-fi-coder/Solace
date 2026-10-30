@@ -27,7 +27,8 @@ config  │   │   │       ← pydantic-settings; imports contracts
 | `llm` | `contracts`, `config`, stdlib, third-party LLM SDKs |
 | `storage` | `contracts`, `config`, `sqlalchemy`, stdlib |
 | `tracing` | `contracts`, `config`, stdlib |
-| `safety` | `contracts`, `config`, stdlib (no LLM in Layer 1 rules) |
+| `safety` | `contracts`, `config`, `llm` (structured classify only), `tracing`, `PyYAML`, stdlib |
+| `emotion` | `contracts`, `tracing`, `transformers` (lazy, optional `[ml]` extra) |
 | `rag` | `contracts`, `config`, `storage`, `chromadb`, `sentence_transformers` |
 | `agents` | `contracts`, `config`, `llm`, `rag`, `storage`, `tracing`, `safety` |
 | `main` | all of the above |
@@ -154,3 +155,49 @@ Transitions are decided by the **Conductor** based on EmotionalState confidence 
 - No PII in logs above DEBUG level
 - PII scrubber hooks into `pre_send_filter` (Layer 5)
 - Free-tier LLM providers: only synthetic data in dev/test
+
+---
+
+## Layer 1 — Safety and Emotion
+
+`SafetyGate.check(message, history, session_state)` always runs the YAML-backed rule layer
+first. It then invokes the structured `TaskKind.classify` gateway classifier when configured.
+The final level is the maximum of the rule and classifier levels; classifier failure or cap
+exhaustion logs a warning, marks the result degraded, and preserves the rule result. A session
+that has reached `crisis` remains at least `elevated` on every later turn.
+
+The classifier receives the current user turn and the six most recent user turns. Its result
+records the serving provider/model and preceding gateway attempts. Crisis output is never drafted
+by an LLM: `responses.py` supplies a fixed crisis template and returns `crisis_override`.
+Elevated results return `soft_check` guidance so orchestration can continue with a gentle
+counsellor check-in.
+
+Rule patterns are maintained in `data/safety/patterns_en.yaml` and
+`data/safety/patterns_hinglish.yaml`. Text is lowercased, common leetspeak and typos are mapped,
+long repeated letters are reduced, and punctuation noise is removed before matching. Negation is
+limited to nearby intent phrases so constructions such as "I'm not going to hurt myself" do not
+become crisis matches. Idioms such as "this exam is killing me" and "I could die of
+embarrassment" do not match the explicit self-harm/intent patterns. This rule set is a safety
+floor, not a clinically validated detector.
+
+Rules cannot cover all paraphrases. The LLM classifier is the semantic layer; rules are the
+floor; when the classifier is unavailable the system runs degraded and this is a known limitation.
+
+`EmotionRecognizer` lazily loads `SamLowe/roberta-base-go_emotions` on first inference and accepts
+an injected classifier for deterministic tests. It returns the fine label plus an aggregated
+coarse label from the 28 GoEmotions classes. The model's score is an uncalibrated classification
+score; it is **not** a calibrated measure of emotional intensity or clinical severity.
+Install optional CPU inference dependencies with
+`python -m pip install ".[ml]" --extra-index-url https://download.pytorch.org/whl/cpu`.
+
+**Emotion output is never a safety signal.** The GoEmotions model labelled “I just want to sleep
+and not wake up” as fine label `desire` / coarse label `positive`, and “everyone would be better
+off without me” as `positive`. Never use emotion output to soften, redirect, or override the
+Safety Sentinel level; safety screening is performed independently by `SafetyGate`.
+
+The normalizer maps only the configured ASCII leetspeak characters (`0`, `1`, `3`, `4`, `5`, and
+`$`), plus the documented Unicode and punctuation variants. Other digit/symbol substitutions,
+spaced-letter obfuscation, and cross-script lookalikes are known bypasses. Non-U+200B format
+characters are stripped and can join adjacent words when used at a word boundary. Normalization
+is not a substitute for broad pattern-family coverage: for example, `k1ll mys3lf` correctly
+normalizes to `kill myself`, but still requires a bare self-harm expression rule to match.

@@ -1,1 +1,5 @@
-"""Safety package — Sentinel and emotion classifier (implemented in Layer 1)."""
+"""Rule-first safety screening and crisis response templates."""
+
+from app.safety.sentinel import SafetyGate
+
+__all__ = ["SafetyGate"]
