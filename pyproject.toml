@@ -28,6 +28,7 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.0.0",       # Load .env files
     "PyYAML>=6.0.2",              # Human-reviewable safety patterns and helplines
+    "PyMuPDF>=1.24.0",            # Page-preserving PDF text extraction for the local KB
 ]
 
 [project.optional-dependencies]

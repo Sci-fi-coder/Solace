@@ -272,3 +272,29 @@ Layer 1 smoke and safety-evaluation scripts.
 **Rationale:** The gateway loads and enforces its provider daily-call counter from `provider_usage`;
 an in-memory SQLite engine without that table aborts live evaluation before classification.
 The initializer reuses the storage schema and leaves provider/model defaults unchanged.
+
+## 2026-10-30 — Layer 2a knowledge cards
+
+### D-037: Use PyMuPDF for local page-preserving extraction
+**Decision:** Use PyMuPDF (`fitz`) for extracting one text record per PDF page and for the
+synthetic-PDF extraction test.
+**Rationale:** PyMuPDF is installed in the Python 3.13 environment and can preserve 1-based page
+boundaries while handling the illustrated WHO guide. PDFs remain outside the repository; extracted
+JSON is written under ignored `data/kb_work/`.
+**Alternative:** pypdf. Rejected for this change because it is not installed in the environment;
+the selected library satisfies the Python 3.13 compatibility requirement.
+
+### D-038: Match source PDFs by the exact registry filename
+**Decision:** Only extract files whose names exactly match `sources.yaml`; report all other files
+as unmatched and all expected files that are absent.
+**Rationale:** The PM Plus mapping requires `WHO_MSD_MER_18_5_eng.pdf`, while the local directory
+contains `WHO_MSD_MER_18.5_eng.pdf`. Since the mapping explicitly forbids guessing or renaming,
+the dotted filename is not treated as PM Plus.
+
+### D-039: Keep card drafting resumable and isolated from dotenv files
+**Decision:** Cache each successful structured response by SHA-256 of source id, PDF page numbers,
+and the complete prompt. The drafting CLI initializes the configured gateway from process
+environment settings while its working directory is a new empty temporary directory.
+**Rationale:** Successful sections can be reused after quota exhaustion without resending source
+text, and gateway initialization cannot load the repository's `.env`. Provider request usage is
+measured from the gateway's in-memory SQLite counter; defaults and model names remain unchanged.

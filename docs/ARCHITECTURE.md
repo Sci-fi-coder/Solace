@@ -201,3 +201,14 @@ spaced-letter obfuscation, and cross-script lookalikes are known bypasses. Non-U
 characters are stripped and can join adjacent words when used at a word boundary. Normalization
 is not a substitute for broad pattern-family coverage: for example, `k1ll mys3lf` correctly
 normalizes to `kill myself`, but still requires a bare self-harm expression rule to match.
+
+## Layer 2a — Source registry and knowledge cards
+
+`data/kb/sources.yaml` records exact-mapped local PDF filenames and source metadata. The
+`scripts/kb_extract.py` script writes one JSON record per 1-based PDF page under ignored
+`data/kb_work/`; the PDFs themselves remain outside the repository. `scripts/kb_draft_cards.py`
+uses the `TaskKind.extract` gateway to draft paraphrased cards one source section at a time,
+caches successful output, and writes editable YAML with `reviewed: false`. Unsafe pages and
+banned card content are screened in code, while invalid citation evidence is retained in `notes`
+as `needs_review`. `scripts/kb_validate.py` checks card schemas, citation page existence, banned
+content, ids, and coverage. Vector storage and retrieval are not part of this layer.

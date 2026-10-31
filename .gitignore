@@ -7,6 +7,8 @@
 *.db-shm
 *.db-wal
 data/raw/
+data/kb_raw/
+data/kb_work/
 data/solace.db
 
 # Vector stores / embeddings

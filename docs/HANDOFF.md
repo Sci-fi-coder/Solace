@@ -6,7 +6,45 @@
 ---
 
 ## Current Branch
-`layer-1-safety-emotion`
+`layer-2a-cards`
+
+---
+
+## Session: 2026-10-30 — Layer 2a source registry and card drafts
+
+### Done
+- Created `layer-2a-cards` directly from `main`; confirmed the Layer 1 merge is present on
+  `main` before starting.
+- Inventoried `KB_RAW_DIR` by exact filename. Matched mhGAP (173 pages), DWM stress (132 pages),
+  and NIMH stress (2 pages); the mapped PM Plus filename is missing. The similarly named
+  `WHO_MSD_MER_18.5_eng.pdf` is unmatched and was not extracted.
+- Added the source registry, page-preserving PyMuPDF extraction, card schema, cached structured
+  drafting workflow, YAML validator, and offline tests. No PDF was copied into the repository.
+- Extracted the three exact-matched PDFs to ignored `data/kb_work/`; DWM had no extractable text
+  on PDF pages 2, 6, and 129–131. mhGAP and NIMH had no blank pages.
+- Added safe-page selection and line-level removal of phone/URL/helpline contact material before
+  sending selected text to the gateway. Invalid citations remain in YAML with `needs_review`.
+
+### Verification
+- Baseline `pytest -q`: 195 passed, 1 deselected.
+- Focused Layer 2a tests: 20 passed, including synthetic PDF extraction, banned-content patterns,
+  citation review, cache reuse, and quota-stop behavior.
+- Final `pytest`: 215 passed, 1 deselected. `ruff check .`, `git diff --check`, and
+  `compileall` passed. Tests were run without implicit dotenv loading.
+- Drafting was attempted, but no enabled provider credentials were available in the process
+  environment. The CLI now exits before provider dispatch in that case; real API calls: 0,
+  cards drafted: 0.
+
+### Known issues
+- PM Plus remains unavailable until the exact mapped filename is supplied; the unmatched
+  similarly named PDF is intentionally ignored.
+- No card collection exists yet, so the collection validator and required emotion/category
+  coverage remain unverified. The implementation is not committed or pushed.
+
+### Next
+- Configure an enabled LLM provider through process environment settings (without sharing key
+  values in chat), rerun `python -m scripts.kb_draft_cards --limit 30`, inspect generated cards,
+  run `python -m scripts.kb_validate`, then commit and push `layer-2a-cards`.
 
 ---
 

@@ -1,0 +1,33 @@
+sources:
+  - id: mhgap_ig_v2
+    title: "mhGAP Intervention Guide: Mental Health Gap Action Programme, Version 2.0"
+    publisher: World Health Organization
+    year: 2016
+    url: "http://www.who.int"
+    licence: "© World Health Organization 2016; all rights reserved. Permission requests are directed to WHO Press."
+    local_filename: "9789241549790-eng.pdf"
+    notes: "Page references are 1-based PDF page numbers, not printed page numbers; the two differ."
+  - id: dwm_stress
+    title: "Doing What Matters in Times of Stress: An Illustrated Guide"
+    publisher: World Health Organization
+    year: 2020
+    url: "https://www.who.int/mental_health"
+    licence: "Creative Commons Attribution-NonCommercial-ShareAlike 3.0 IGO (CC BY-NC-SA 3.0 IGO)."
+    local_filename: "whodoingwhatmattersntimesstress.pdf"
+    notes: "Page references are 1-based PDF page numbers, not printed page numbers; the two differ."
+  - id: pm_plus
+    title: "WHO Problem Management Plus (PM+)"
+    publisher: World Health Organization
+    year: null
+    url: null
+    licence: verify
+    local_filename: "WHO_MSD_MER_18_5_eng.pdf"
+    notes: "The exact mapped filename was not found. Page references, when available, are 1-based PDF page numbers, not printed page numbers."
+  - id: nimh_stress
+    title: "I'm So Stressed Out!"
+    publisher: National Institute of Mental Health
+    year: null
+    url: null
+    licence: verify
+    local_filename: "Im-So-Stressed-Out.pdf"
+    notes: "The PDF does not state its publication year, canonical URL, or licence. Page references are 1-based PDF page numbers, not printed page numbers."
