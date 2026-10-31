@@ -298,3 +298,42 @@ environment settings while its working directory is a new empty temporary direct
 **Rationale:** Successful sections can be reused after quota exhaustion without resending source
 text, and gateway initialization cannot load the repository's `.env`. Provider request usage is
 measured from the gateway's in-memory SQLite counter; defaults and model names remain unchanged.
+
+## 2026-10-31 — Layer 2a extraction resilience and source sanitisation
+
+### D-040: Load drafting settings through app.config and fail over on structured-output errors
+**Decision:** Use the shared `app.config.settings` loader in `kb_draft_cards`. Record structured
+parse and repair failures as failed provider attempts and continue the configured chain. Print
+failure attempts in the CLI with credentials redacted; show tracebacks only with `--debug`.
+**Rationale:** Normal terminal launches must use the same dotenv-aware settings as other scripts,
+and one provider's malformed JSON must not abort fallback. Provider names are reported without
+credential values. This supersedes D-039's temporary-working-directory isolation for the drafting
+CLI; credentials continue to be loaded only through `app.config`.
+
+### D-041: Exclude Groq GPT-OSS 20B from structured extraction
+**Decision:** Remove `groq/openai/gpt-oss-20b` from the default extraction chain and skip that
+provider/model for extraction even when supplied by a chain override. Preserve its use in other
+task chains and do not change provider models or daily caps.
+**Investigation:** Groq rejected the raw Pydantic JSON Schema because strict mode requires every
+property (including `notes` and `reviewed`) in `required`. After making the schema strict-compatible,
+`openai/gpt-oss-20b` accepted `reasoning_effort="low"` and `max_tokens=8192`; one synthetic
+production-prompt response validated, but an identical repeat failed with HTTP 400
+`json_validate_failed` because the generated id used an underscore not allowed by the card schema.
+An earlier generic structured-output response also failed card validation. Together with the
+observed `json_object` call and repair failures, this is not reliable enough for card extraction.
+The targeted skip leaves other task chains unchanged.
+
+### D-042: Sanitize source text line-by-line and gate page eligibility by explicit policy
+**Decision:** Remove only lines containing phone/emergency numbers, URLs, helpline references,
+medication names, or doses. Keep other page text; exclude a page only for a configured section
+deny-list or fewer than 200 sanitized characters. Keep `banned_content_reasons` unchanged for
+validating generated cards. Report all unselected pages and reasons in dry-run output.
+**mhGAP heading ranges:** Include hint `13-20,35` (Essential Care and Practice pages 13-20,
+communication skills pages 13-15, ECP psychosocial interventions for stress pages 19-20, and
+Depression psychosocial interventions page 35). Deny the self-harm/suicide module on PDF pages
+139-148. Medication-section deny ranges: ECP 21-22; Depression 36-40; Psychoses 49-57; Epilepsy
+62-64, 68, and 73-76; child/adolescent pharmacological treatment 100; Dementia 110-111; and
+substance-use medication sections 114-130 and 134-136. These are 1-based PDF page numbers.
+**Rationale:** Contact footers and medication references should not erase otherwise useful
+material. Heading-based ranges explicitly exclude clinical sections without guessing from a
+single banned keyword appearing elsewhere on a page.

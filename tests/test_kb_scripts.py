@@ -12,8 +12,9 @@ import yaml
 
 from app.contracts import TaskKind
 from app.rag.cards import Card
-from scripts import kb_validate
+from scripts import kb_draft_cards, kb_validate
 from scripts.kb_draft_cards import (
+    DenySection,
     DraftBatch,
     PageText,
     QuotaExhausted,
@@ -89,12 +90,18 @@ def test_page_selection_parses_one_based_ranges_and_rejects_bad_ranges() -> None
 
 
 def test_page_selection_strips_contact_lines_but_keeps_safe_text() -> None:
-    """URL-bearing footer lines do not discard otherwise relevant source prose."""
+    """URL-bearing footer lines are removed while sufficiently long safe prose remains."""
+    safe_text = (
+        "Grounding can help with stress by bringing attention back to the present. "
+        "Notice a sound, a color, or the feeling of your feet on the floor. "
+        "Then choose one small action that feels manageable and repeat the exercise "
+        "whenever attention drifts. "
+    ) * 2
     page = PageText(
         1,
-        "Grounding can help with stress.\n"
-        "Find more at https://example.org/stress\n"
-        "Try noticing one useful detail.",
+        safe_text
+        + "\nFind more at https://example.org/stress\n"
+        + "Try noticing one useful detail.",
     )
 
     selected, _ = select_pages(
@@ -104,8 +111,178 @@ def test_page_selection_strips_contact_lines_but_keeps_safe_text() -> None:
     )
 
     assert len(selected) == 1
-    assert "Grounding can help with stress." in selected[0].text
+    assert "Grounding can help with stress by" in selected[0].text
     assert "https://" not in selected[0].text
+    assert "Try noticing one useful detail." in selected[0].text
+
+
+def test_page_sanitisation_keeps_other_banned_validator_matches() -> None:
+    """Page sanitisation removes only requested line categories, not whole pages."""
+    prose = (
+        "People can practise a small grounding exercise during ordinary stress. "
+        "Notice a few details in the room and return attention to the present moment. "
+    ) * 2
+    page = PageText(
+        1,
+        prose
+        + "\nCall 112 for immediate help."
+        + "\nVisit https://example.org."
+        + "\nAsk about sertraline 10 mg."
+        + "\nA helpline can provide support."
+        + "\nSelf-harm is discussed in the restricted clinical section.",
+    )
+
+    selected, excluded = select_pages(
+        [page],
+        source_id="synthetic",
+        selection=None,
+    )
+
+    assert [item.page_number for item in selected] == [1]
+    assert "Self-harm is discussed" in selected[0].text
+    assert not any(term in selected[0].text for term in ("112", "https:", "sertraline", "helpline"))
+    assert excluded == {}
+
+
+def test_page_selection_reports_deny_list_and_too_short_reasons() -> None:
+    """Deny-listed sections and short sanitized pages have separate explanations."""
+    long_text = (
+        "Communication skills help people share concerns with respect. "
+        "Listen carefully and ask a clear, open question. "
+    ) * 3
+    pages = [
+        PageText(1, long_text),
+        PageText(2, "A short page with a useful idea."),
+        PageText(3, long_text),
+    ]
+
+    selected, excluded = select_pages(
+        pages,
+        source_id="synthetic",
+        selection=None,
+        include_pages="1",
+        deny_sections=(DenySection("restricted section", "3"),),
+    )
+
+    assert [page.page_number for page in selected] == [1]
+    assert "too short after sanitisation" in excluded[2]
+    assert excluded[3] == "deny list: restricted section"
+
+
+def test_dry_run_prints_selected_pages_and_each_exclusion_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI dry run explains selected, short, and deny-listed pages."""
+    source = SourceRecord(
+        "synthetic",
+        "Synthetic source",
+        "synthetic.pdf",
+        include_pages="1",
+        deny_sections=(DenySection("restricted section", "3"),),
+    )
+    long_text = (
+        "Communication skills help people share concerns with respect. "
+        "Listen carefully and ask a clear, open question. "
+    ) * 3
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    (work_dir / "synthetic.json").write_text(
+        json.dumps(
+            [
+                {"page_number": 1, "text": long_text},
+                {"page_number": 2, "text": "A short page."},
+                {"page_number": 3, "text": long_text},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(kb_draft_cards, "load_sources", lambda: [source])
+    monkeypatch.setattr(kb_draft_cards, "WORK_DIR", work_dir)
+    monkeypatch.setattr(kb_draft_cards, "CARDS_DIR", tmp_path / "cards")
+    monkeypatch.setattr(kb_draft_cards, "_existing_cards", lambda _path: ({}, {}))
+    monkeypatch.setattr("sys.argv", ["kb_draft_cards", "--dry-run"])
+
+    assert kb_draft_cards.main() == 0
+    output = capsys.readouterr().out
+
+    assert "synthetic: 1 selected PDF pages (1)" in output
+    assert "2: too short after sanitisation" in output
+    assert "3: deny list: restricted section" in output
+
+
+def test_failure_output_lists_redacted_attempts_without_default_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Default failures are one-line and include safe per-provider diagnostics."""
+    monkeypatch.setattr(kb_draft_cards, "_FAILURE_SECRETS", ["synthetic-secret"])
+
+    class GatewayFailure(Exception):
+        attempts = [
+            {
+                "provider": "groq",
+                "model": "openai/gpt-oss-20b",
+                "outcome": "failed",
+                "error_summary": "BadRequestError: synthetic-secret json_validate_failed",
+            }
+        ]
+
+    kb_draft_cards._print_failure(GatewayFailure("failed\nwith a secret synthetic-secret"), debug=False)
+    output = capsys.readouterr().out
+
+    assert "ERROR: GatewayFailure: failed with a secret [REDACTED]" in output
+    assert "provider=groq model=openai/gpt-oss-20b outcome=failed" in output
+    assert "json_validate_failed" in output
+    assert "synthetic-secret" not in output
+    assert "Traceback" not in output
+
+
+def test_failure_output_prints_traceback_only_in_debug_mode(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The debug flag is the only mode that prints a traceback."""
+    try:
+        raise RuntimeError("synthetic failure")
+    except RuntimeError as exc:
+        kb_draft_cards._print_failure(exc, debug=True)
+
+    assert "Traceback (most recent call last)" in capsys.readouterr().out
+
+
+def test_gateway_configuration_logs_provider_names_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Gateway setup reads the app settings object without printing credential values."""
+    from app.llm.gateway import LLMGateway
+
+    class SyntheticSettings:
+        """Minimal settings substitute with one configured synthetic provider."""
+
+        def provider_config(self, name: str) -> dict[str, object]:
+            return {
+                "api_key": "synthetic-secret" if name == "gemini" else "",
+                "enabled": True,
+            }
+
+    monkeypatch.setattr(kb_draft_cards, "settings", SyntheticSettings())
+    monkeypatch.setattr(kb_draft_cards, "_FAILURE_SECRETS", [])
+    monkeypatch.setattr(
+        LLMGateway,
+        "from_settings",
+        classmethod(lambda cls, engine: object()),
+    )
+
+    gateway, engine, _, has_provider = kb_draft_cards._create_gateway()
+    engine.dispose()
+    output = capsys.readouterr().out
+
+    assert gateway is not None
+    assert has_provider
+    assert "gemini" in output
+    assert "synthetic-secret" not in output
 
 
 def test_citation_checks_flag_missing_pages_and_title_mismatch() -> None:

@@ -11,11 +11,11 @@ from app.contracts import TaskKind
 from app.llm.gateway import (
     GatewayExhaustedError,
     LLMGateway,
-    StructuredOutputError,
     _UsageCounter,
 )
 from app.llm.providers import (
     AuthenticationError,
+    BadRequestError,
     BillingOrQuota,
     LLMResult,
     MockProvider,
@@ -508,11 +508,120 @@ def test_structured_output_repair_retry() -> None:
 
 
 def test_structured_output_raises_after_failed_repair() -> None:
-    """StructuredOutputError is raised when both attempts return bad JSON."""
+    """Failed JSON parsing is recorded before the gateway exhausts its chain."""
     mock = MockProvider(fixed_output="not json at all {{}")
     gw = _gateway_with(mock)
-    with pytest.raises(StructuredOutputError):
+    with pytest.raises(GatewayExhaustedError) as raised:
         gw.generate(TaskKind.extract, _simple_messages(), json_schema=_SampleSchema)
+    assert len(raised.value.attempts) == 1
+    assert raised.value.attempts[0]["outcome"] == "failed"
+    assert "structured output" in raised.value.attempts[0]["error_summary"].lower()
+
+
+def test_invalid_structured_output_falls_through_to_next_provider() -> None:
+    """A provider whose JSON repair fails does not block a later provider."""
+    invalid = MockProvider(fixed_output="not valid JSON")
+    invalid.name = "invalid"
+    backup = MockProvider(fixed_output='{"answer":"recovered","confidence":0.8}')
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"invalid": invalid, "backup": backup},
+        fallback_chains={
+            task.value: ["invalid/model-a", "backup/model-b"] for task in TaskKind
+        },
+        daily_caps={"invalid": 10, "backup": 10},
+        max_retries=1,
+    )
+
+    result = gateway.generate(
+        TaskKind.extract,
+        _simple_messages(),
+        json_schema=_SampleSchema,
+    )
+
+    assert result.provider == "backup"
+    assert result.parsed.answer == "recovered"
+    assert result.attempts[0]["provider"] == "invalid"
+    assert result.attempts[0]["model"] == "model-a"
+    assert result.attempts[0]["outcome"] == "failed"
+
+
+def test_failed_structured_repair_falls_through_with_safe_error_details() -> None:
+    """A provider API error during repair is recorded without exposing its body."""
+
+    class _RepairFailureProvider(MockProvider):
+        """Return invalid JSON, then simulate a provider schema-validation error."""
+
+        calls = 0
+
+        def generate(self, messages, **kwargs):  # type: ignore[override]
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResult(
+                    text="not valid JSON",
+                    provider="primary",
+                    model="model-a",
+                    latency_ms=1.0,
+                )
+            raise BadRequestError(
+                "primary",
+                400,
+                "json_validate_failed failed_generation=synthetic-private-output",
+            )
+
+    primary = _RepairFailureProvider()
+    primary.name = "primary"
+    backup = MockProvider(fixed_output='{"answer":"recovered","confidence":0.8}')
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"primary": primary, "backup": backup},
+        fallback_chains={
+            task.value: ["primary/model-a", "backup/model-b"] for task in TaskKind
+        },
+        daily_caps={"primary": 10, "backup": 10},
+        max_retries=1,
+    )
+
+    result = gateway.generate(
+        TaskKind.extract,
+        _simple_messages(),
+        json_schema=_SampleSchema,
+    )
+
+    assert result.provider == "backup"
+    failure = result.attempts[0]["error_summary"]
+    assert "HTTP 400 json_validate_failed" in failure
+    assert "synthetic-private-output" not in failure
+
+
+def test_gpt_oss_structured_extraction_is_skipped_without_affecting_other_tasks() -> None:
+    """Only extraction skips the unsupported Groq model; other task kinds still use it."""
+    groq = MockProvider(fixed_output="plain response")
+    groq.name = "groq"
+    backup = MockProvider(
+        fixed_output='{"answer":"backup","confidence":0.9}'
+    )
+    backup.name = "backup"
+    gateway = LLMGateway(
+        providers={"groq": groq, "backup": backup},
+        fallback_chains={
+            task.value: ["groq/openai/gpt-oss-20b", "backup"] for task in TaskKind
+        },
+        daily_caps={"groq": 10, "backup": 10},
+        max_retries=1,
+    )
+
+    extracted = gateway.generate(
+        TaskKind.extract,
+        _simple_messages(),
+        json_schema=_SampleSchema,
+    )
+    classified = gateway.generate(TaskKind.classify, _simple_messages())
+
+    assert extracted.provider == "backup"
+    assert extracted.attempts[0]["outcome"] == "skipped"
+    assert "structured extraction unsupported" in extracted.attempts[0]["error_summary"]
+    assert classified.provider == "groq"
 
 
 # ── pre_send_filter ───────────────────────────────────────────────────────────

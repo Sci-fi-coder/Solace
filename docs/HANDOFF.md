@@ -10,6 +10,49 @@
 
 ---
 
+## Session: 2026-10-31 — Layer 2a extraction resilience and source selection
+
+### Done
+- Changed `kb_draft_cards` to use the normal `app.config.settings` loader and report configured
+  provider names only. Failures now show one safe error line and per-provider attempts; traceback
+  output is opt-in with `--debug`.
+- Made structured-output parse and repair failures provider-local gateway failures. The gateway
+  records each failed provider and continues through the chain; all-provider failure retains the
+  complete attempts list.
+- Probed Groq `openai/gpt-oss-20b` with `reasoning_effort=low`, `max_tokens=8192`, and a strict
+  JSON Schema shaped from the card schema. Strict schema mode succeeded once and failed once on
+  the card id pattern, so this model is excluded from extraction only. Other chains and defaults
+  remain unchanged.
+- Replaced page-wide source exclusion with line-level contact/medication sanitisation and a
+  200-character minimum. Added mhGAP deny-list ranges based on PDF section headings and
+  `include_pages: "13-20,35"` to prioritize essential care, communication, and psychosocial
+  material.
+- Dry-run diagnostics now list selected PDF pages and every excluded page grouped by reason.
+
+### Verification
+- Baseline `pytest -q`: 215 passed, 1 deselected.
+- Focused gateway/config/KB tests: 46 passed.
+- Pre-change dry run: mhGAP 14 pages, PM+ 13, DWM stress 35, NIMH 1.
+- Post-change dry run: mhGAP 13 pages, PM+ 11, DWM stress 35, NIMH 2.
+- Groq synthetic structured probe: one of two repeated strict-schema card responses validated;
+  the other failed with `json_validate_failed` for the card-id pattern. No generated card was
+  saved.
+- Exact DWM dry-run reproduction selected pages 21, 24, and 25 (818 sanitized characters); it
+  made no gateway/API calls.
+- Final `pytest -q`: 224 passed, 1 deselected. `ruff check .` and `git diff --check` passed.
+
+### Known issues
+- PM+ still uses the existing local extracted JSON while its exact-mapped raw PDF filename remains
+  absent; no source registry mapping was changed.
+- Card generation/collection validation remains unverified; this task did not make real drafting
+  calls.
+
+### Next
+- Review the proposed mhGAP page ranges and dry-run exclusions, then continue Layer 2a card review
+  only. Do not begin Layer 2b.
+
+---
+
 ## Session: 2026-10-30 — Layer 2a source registry and card drafts
 
 ### Done

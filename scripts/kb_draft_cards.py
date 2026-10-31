@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import re
-import tempfile
+import traceback
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from app.config import redact_secrets, settings
 from app.contracts import TaskKind
 from app.rag.cards import (
     COARSE_EMOTION_LABELS,
@@ -45,10 +46,14 @@ _TOPIC_RE = re.compile(
     r"communication|supporters|stress|anxiety|cope|coping|present moment|"
     r"making room|engaging|kindness|help-seeking|professional help|seek help)\b"
 )
-_SOURCE_EXCLUSION_RE = re.compile(
-    r"(?i)\b(?:self[- ]harm|suicid\w*|medications?|medicines?|"
-    r"pharmacolog\w*|antidepressants?|antipsychotics?|benzodiazepines?)\b"
-)
+_SOURCE_LINE_EXCLUSION_REASONS = {
+    "phone number",
+    "emergency or helpline number",
+    "URL",
+    "dosage",
+    "medication name or reference",
+    "helpline name or reference",
+}
 _TITLE_STOP_WORDS = {
     "about",
     "after",
@@ -111,20 +116,33 @@ class PageText:
 
 
 @dataclass(frozen=True)
+class DenySection:
+    """A source section excluded by its explicit 1-based PDF page range."""
+
+    name: str
+    pages: str
+
+
+@dataclass(frozen=True)
 class SourceRecord:
     """Source metadata required for drafting."""
 
     id: str
     title: str
     local_filename: str
+    include_pages: str | None = None
+    deny_sections: tuple[DenySection, ...] = ()
 
 
 class QuotaExhausted(Exception):
     """Raised when all configured providers report quota or rate exhaustion."""
 
 
+_FAILURE_SECRETS: list[str] = []
+
+
 def load_sources() -> list[SourceRecord]:
-    """Read the source registry without touching any PDF or dotenv file."""
+    """Read source metadata, page hints, and explicit deny sections."""
     payload = yaml.safe_load(SOURCES_PATH.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
         raise ValueError(f"Invalid source registry: {SOURCES_PATH}")
@@ -137,7 +155,32 @@ def load_sources() -> list[SourceRecord]:
         filename = row.get("local_filename")
         if not all(isinstance(value, str) for value in (source_id, title, filename)):
             raise ValueError(f"Source record requires id, title, and filename in {SOURCES_PATH}")
-        records.append(SourceRecord(source_id, title, filename))
+        include_pages = row.get("include_pages")
+        if include_pages is not None and not isinstance(include_pages, str):
+            raise ValueError(f"include_pages must be a page range string in {SOURCES_PATH}")
+        raw_deny_sections = row.get("deny_sections", [])
+        if not isinstance(raw_deny_sections, list):
+            raise ValueError(f"deny_sections must be a list in {SOURCES_PATH}")
+        deny_sections: list[DenySection] = []
+        for section in raw_deny_sections:
+            if (
+                not isinstance(section, dict)
+                or not isinstance(section.get("name"), str)
+                or not isinstance(section.get("pages"), str)
+            ):
+                raise ValueError(
+                    f"Each deny section requires name and pages in {SOURCES_PATH}"
+                )
+            deny_sections.append(DenySection(section["name"], section["pages"]))
+        records.append(
+            SourceRecord(
+                source_id,
+                title,
+                filename,
+                include_pages,
+                tuple(deny_sections),
+            )
+        )
     return records
 
 
@@ -180,26 +223,18 @@ def load_extracted_pages(path: Path) -> list[PageText]:
     return pages
 
 
-def _sanitize_source_page(page: PageText) -> PageText | None:
-    """Remove contact-only lines and exclude unsafe or clinically restricted pages."""
-    if not page.text.strip() or _SOURCE_EXCLUSION_RE.search(page.text):
-        return None
-    contact_reasons = {
-        "phone number",
-        "emergency or helpline number",
-        "URL",
-        "helpline name or reference",
-    }
+def _sanitize_source_page(page: PageText) -> tuple[PageText | None, str | None]:
+    """Remove only lines containing contact or medication details."""
     clean_lines: list[str] = []
     for line in page.text.splitlines():
         reasons = banned_content_reasons(line)
-        if any(reason not in contact_reasons for reason in reasons):
-            return None
-        if reasons:
+        if _SOURCE_LINE_EXCLUSION_REASONS.intersection(reasons):
             continue
         clean_lines.append(line)
     text = "\n".join(clean_lines).strip()
-    return PageText(page.page_number, text) if text else None
+    if len(text) < 200:
+        return None, f"too short after sanitisation ({len(text)} characters; minimum 200)"
+    return PageText(page.page_number, text), None
 
 
 def select_pages(
@@ -207,50 +242,88 @@ def select_pages(
     *,
     source_id: str,
     selection: str | None,
+    include_pages: str | None = None,
+    deny_sections: tuple[DenySection, ...] = (),
     max_chars: int = MAX_CONTEXT_CHARS,
-) -> tuple[list[PageText], list[int]]:
-    """Select safe relevant pages and report pages excluded by policy."""
-    safe_pages = [
-        sanitized
-        for page in pages
-        if (sanitized := _sanitize_source_page(page)) is not None
-    ]
-    safe_numbers = {page.page_number for page in safe_pages}
-    excluded = [page.page_number for page in pages if page.page_number not in safe_numbers]
+) -> tuple[list[PageText], dict[int, str]]:
+    """Select relevant sanitized pages and explain every excluded page."""
+    deny_reasons: dict[int, str] = {}
+    for section in deny_sections:
+        for page_number in parse_pages(section.pages, len(pages)):
+            deny_reasons.setdefault(page_number, f"deny list: {section.name}")
+
+    safe_pages: list[PageText] = []
+    excluded = dict(deny_reasons)
+    for page in pages:
+        if page.page_number in deny_reasons:
+            continue
+        sanitized, reason = _sanitize_source_page(page)
+        if sanitized is None:
+            excluded[page.page_number] = reason or "too short after sanitisation"
+        else:
+            safe_pages.append(sanitized)
+
     if selection is not None:
         requested = parse_pages(selection, len(pages))
         chosen = [page for page in safe_pages if page.page_number in requested]
-        omitted = sorted(set(requested) - {page.page_number for page in chosen})
-        excluded.extend(page for page in omitted if page not in excluded)
-        if not chosen:
-            raise ValueError(f"no safe, extractable pages remain for {source_id}")
+        chosen_numbers = {page.page_number for page in chosen}
+        for page_number in requested:
+            if page_number not in chosen_numbers and page_number not in excluded:
+                excluded[page_number] = "not selected: unavailable after sanitisation"
+        for page in safe_pages:
+            if page.page_number not in requested:
+                excluded[page.page_number] = "not requested by --pages"
         size = sum(len(page.text) for page in chosen)
         if size > max_chars:
             raise ValueError(
                 f"selected pages for {source_id} contain {size} characters; "
                 f"the maximum is {max_chars}"
             )
-        return chosen, sorted(set(excluded))
+        return chosen, excluded
 
+    hinted_numbers = (
+        set(parse_pages(include_pages, len(pages))) if include_pages is not None else set()
+    )
     scored = [
         (len(_TOPIC_RE.findall(page.text)), page.page_number, page)
         for page in safe_pages
     ]
-    scored = [entry for entry in scored if entry[0] > 0]
     scored.sort(key=lambda entry: (-entry[0], entry[1]))
     chosen: list[PageText] = []
     char_count = 0
-    for _, _, page in scored:
-        if len(chosen) >= MAX_DEFAULT_PAGES:
-            break
-        if char_count + len(page.text) > max_chars:
+    safe_by_number = {page.page_number: page for page in safe_pages}
+
+    for page_number in sorted(hinted_numbers):
+        page = safe_by_number.get(page_number)
+        if page is None:
+            continue
+        if len(chosen) >= MAX_DEFAULT_PAGES or char_count + len(page.text) > max_chars:
+            excluded[page_number] = "not selected: include_pages hint exceeds context limits"
             continue
         chosen.append(page)
         char_count += len(page.text)
-    if not chosen:
-        raise ValueError(f"no relevant, safe pages found for {source_id}")
+
+    for score, page_number, page in scored:
+        if page_number in hinted_numbers:
+            continue
+        if score == 0:
+            excluded[page_number] = "not selected: no topic match or include_pages hint"
+            continue
+        if len(chosen) >= MAX_DEFAULT_PAGES:
+            excluded[page_number] = "not selected: default page limit reached"
+            continue
+        if char_count + len(page.text) > max_chars:
+            excluded[page_number] = "not selected: context character limit reached"
+            continue
+        chosen.append(page)
+        char_count += len(page.text)
+
+    chosen_numbers = {page.page_number for page in chosen}
+    for page in safe_pages:
+        if page.page_number not in chosen_numbers and page.page_number not in excluded:
+            excluded[page.page_number] = "not selected: lower topic relevance"
     chosen.sort(key=lambda page: page.page_number)
-    return chosen, sorted(set(excluded))
+    return chosen, excluded
 
 
 def card_text(card: Card) -> str:
@@ -542,6 +615,7 @@ def _quota_exhausted(exc: Exception) -> bool:
         "resource_exhausted",
         "too many requests",
         "http 429",
+        "daily cap",
     )
     return bool(summaries) and any(
         marker in summary for summary in summaries for marker in markers
@@ -549,28 +623,32 @@ def _quota_exhausted(exc: Exception) -> bool:
 
 
 def _create_gateway() -> tuple[StructuredGateway, Engine, type[Exception], bool]:
-    """Create the configured gateway without loading any dotenv file."""
+    """Create the configured gateway and report configured provider names only."""
     from sqlalchemy import create_engine
 
     from app.storage.models import create_all
 
     engine = create_engine("sqlite:///:memory:")
     create_all(engine)
-    original_directory = Path.cwd()
-    with tempfile.TemporaryDirectory(prefix="solace-kb-settings-") as empty_directory:
-        os.chdir(empty_directory)
-        try:
-            from app.config import settings
-            from app.llm.gateway import GatewayExhaustedError, LLMGateway
+    from app.llm.gateway import GatewayExhaustedError, LLMGateway
 
-            provider_names = ("gemini", "groq", "openrouter", "mistral", "cerebras")
-            has_real_provider = any(
-                (config := settings.provider_config(name))["enabled"] and config["api_key"]
-                for name in provider_names
-            )
-            gateway = LLMGateway.from_settings(engine)
-        finally:
-            os.chdir(original_directory)
+    provider_names = ("gemini", "groq", "openrouter", "mistral", "cerebras")
+    configs = {name: settings.provider_config(name) for name in provider_names}
+    _FAILURE_SECRETS[:] = [
+        str(config["api_key"]) for config in configs.values() if config["api_key"]
+    ]
+    configured = [name for name, config in configs.items() if config["api_key"]]
+    enabled = [
+        name
+        for name, config in configs.items()
+        if config["enabled"] and config["api_key"]
+    ]
+    print(
+        "Configured LLM providers (keys present): "
+        + (", ".join(configured) if configured else "none")
+    )
+    has_real_provider = bool(enabled)
+    gateway = LLMGateway.from_settings(engine)
     return gateway, engine, GatewayExhaustedError, has_real_provider
 
 
@@ -591,6 +669,75 @@ def _usage_tokens(response: GatewayResponse) -> tuple[int, int]:
     """Return prompt and completion tokens reported by the provider, if available."""
     usage = response.usage or {}
     return int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))
+
+
+def _format_page_numbers(page_numbers: list[int]) -> str:
+    """Compress sorted page numbers into inclusive PDF-page ranges."""
+    if not page_numbers:
+        return "none"
+    ranges: list[str] = []
+    start = previous = page_numbers[0]
+    for page_number in page_numbers[1:]:
+        if page_number == previous + 1:
+            previous = page_number
+            continue
+        ranges.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = page_number
+    ranges.append(str(start) if start == previous else f"{start}-{previous}")
+    return ",".join(ranges)
+
+
+def _print_exclusions(excluded: dict[int, str]) -> None:
+    """Print every excluded page grouped by the exact reason."""
+    grouped: dict[str, list[int]] = {}
+    for page_number, reason in sorted(excluded.items()):
+        grouped.setdefault(reason, []).append(page_number)
+    if not grouped:
+        print("  Excluded pages: none")
+        return
+    print("  Excluded pages:")
+    for reason, page_numbers in grouped.items():
+        print(f"    {_format_page_numbers(page_numbers)}: {reason}")
+
+
+def _gateway_attempts(error: Exception) -> list[dict[str, str]]:
+    """Find provider attempts on an error or its chained gateway exception."""
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        attempts = getattr(current, "attempts", None)
+        if isinstance(attempts, list) and attempts:
+            return [
+                attempt
+                for attempt in attempts
+                if isinstance(attempt, dict)
+            ]
+        current = current.__cause__ or current.__context__
+    return []
+
+
+def _redacted_one_line(message: str, *, limit: int = 500) -> str:
+    """Collapse multiline diagnostics and redact configured provider credentials."""
+    line = " ".join(message.split())
+    return redact_secrets(line, _FAILURE_SECRETS)[:limit]
+
+
+def _print_failure(error: Exception, *, debug: bool) -> None:
+    """Print one safe error line, all provider attempts, and an opt-in traceback."""
+    print(f"ERROR: {_redacted_one_line(f'{type(error).__name__}: {error}')}")
+    for attempt in _gateway_attempts(error):
+        provider = attempt.get("provider", "unknown")
+        model = attempt.get("model", "unknown")
+        outcome = attempt.get("outcome", "unknown")
+        summary = _redacted_one_line(attempt.get("error_summary", ""), limit=300)
+        print(
+            f"  Attempt: provider={provider} model={model or 'unknown'} "
+            f"outcome={outcome} error={summary or 'none'}"
+        )
+    if debug:
+        formatted = "".join(traceback.format_exception(error))
+        print(redact_secrets(formatted, _FAILURE_SECRETS), end="")
 
 
 
@@ -700,12 +847,22 @@ def main() -> int:
         help=f"Maximum total cards in the library (default: {DEFAULT_LIMIT}).",
     )
     parser.add_argument("--dry-run", action="store_true", help="Show selected pages without an LLM call.")
+    parser.add_argument("--debug", action="store_true", help="Show a traceback on failure.")
     args = parser.parse_args()
     if args.limit < 1 or args.limit > 30:
         parser.error("--limit must be between 1 and 30")
     if args.pages and not args.source:
         parser.error("--pages requires --source")
 
+    try:
+        return _run(args, sources)
+    except Exception as exc:
+        _print_failure(exc, debug=args.debug)
+        return 1
+
+
+def _run(args: argparse.Namespace, sources: list[SourceRecord]) -> int:
+    """Run the drafting workflow after parsing command-line options."""
     existing, _ = _existing_cards(CARDS_DIR)
     if len(existing) >= args.limit:
         print(f"Card limit already reached ({len(existing)}/{args.limit}); nothing to draft.")
@@ -713,7 +870,7 @@ def main() -> int:
 
     selected_sources = [source for source in sources if not args.source or source.id == args.source]
     planned: list[
-        tuple[SourceRecord, list[PageText], list[PageText], int, list[int]]
+        tuple[SourceRecord, list[PageText], list[PageText], int, dict[int, str]]
     ] = []
     for source in selected_sources:
         extraction_path = WORK_DIR / f"{source.id}.json"
@@ -726,6 +883,8 @@ def main() -> int:
                 source_pages,
                 source_id=source.id,
                 selection=args.pages if args.source == source.id else None,
+                include_pages=source.include_pages,
+                deny_sections=source.deny_sections,
             )
         except ValueError as exc:
             print(f"Skipping {source.id}: {exc}")
@@ -738,7 +897,7 @@ def main() -> int:
         planned.append((source, source_pages, pages, source_limit, excluded))
 
     if not planned:
-        print("No extracted, safe source sections are available.")
+        print("No extracted source sections are available.")
         return 1
     for source, _, pages, max_cards, excluded in planned:
         print(
@@ -747,20 +906,30 @@ def main() -> int:
             f"{sum(len(page.text) for page in pages)} text characters; "
             f"up to {max_cards} cards."
         )
-        if excluded:
-            print(f"  Excluded unsafe, empty, or banned-content pages: {excluded}")
+        _print_exclusions(excluded)
     if args.dry_run:
         _print_coverage(existing)
         print("Dry run: no gateway or API calls were made.")
         return 0
 
+    planned = [entry for entry in planned if entry[2]]
+    if not planned:
+        print("No eligible pages remain after deny-list and sanitisation checks.")
+        return 1
+
     gateway, engine, gateway_error, has_real_provider = _create_gateway()
     if not has_real_provider:
         engine.dispose()
-        print(
-            "No enabled LLM provider is configured in the process environment. "
-            "No cards were drafted and no provider API requests were made."
-        )
+        print("No enabled LLM provider is configured; no provider API requests were made.")
+        for name in ("gemini", "groq", "openrouter", "mistral", "cerebras"):
+            config = settings.provider_config(name)
+            if not config["enabled"]:
+                reason = "provider disabled"
+            elif not config["api_key"]:
+                reason = "no key configured"
+            else:
+                reason = "provider unavailable"
+            print(f"  Skipped provider {name}: {reason}")
         return 3
     before_calls = _provider_call_counts(engine)
     drafted_by_source: Counter[str] = Counter()
@@ -789,7 +958,8 @@ def main() -> int:
                 include_seek_help=source.id == seek_help_source,
                 total_limit=args.limit,
             )
-        except QuotaExhausted:
+        except QuotaExhausted as exc:
+            _print_failure(exc, debug=args.debug)
             print(
                 f"Quota exhausted while drafting {source.id}; completed cards and successful "
                 "section caches are saved. Rerun the same command to resume."
