@@ -1,0 +1,33 @@
+id: stress-versus-anxiety
+title: Stress versus anxiety
+category: psychoeducation
+summary: Stress is a reaction to an outside cause, like a test or an argument, and usually eases once
+  the situation is resolved. Anxiety is the body's reaction to stress that can linger without an immediate
+  threat and may interfere with daily life. Both can bring worry, tension, headaches and poor sleep.
+when_to_use:
+- The person asks whether what they feel is normal
+- Exam or deadline pressure is blending into constant worry
+when_not_to_use:
+- Do not label the person as having an anxiety disorder
+- Do not downplay it; lasting anxiety deserves attention
+steps:
+- Ask what is happening and whether there is a clear cause
+- Explain the difference in plain words
+- Note that both can affect the body and sleep
+- Check whether it lasts and interferes with daily life
+- Point to coping habits or professional support as fits
+emotions:
+- anxiety_fear
+- neutral
+role_affinity:
+- teacher
+- counsellor
+sources:
+- source_id: nimh_stress
+  pages:
+  - 1
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

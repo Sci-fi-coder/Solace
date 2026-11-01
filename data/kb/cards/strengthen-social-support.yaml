@@ -1,0 +1,36 @@
+id: strengthen-social-support
+title: Strengthening social support
+category: technique
+summary: People tend to cope better when they have someone to lean on, and a few helpful people matter
+  more than many. Support can mean being listened to, getting practical help, spending time together without
+  discussing problems, or helping others. Trust grows gradually, so sharing a little at a time is a sensible
+  way to find out who is safe to confide in.
+when_to_use:
+- The person feels alone with a problem
+- Support exists but the person is not using it
+- A person says nobody understands
+when_not_to_use:
+- Do not push someone to confide in people who are unsafe or dismissive
+- Avoid a generic 'talk to someone' without exploring who and how
+steps:
+- Think about who is already supportive
+- 'Decide what kind of support you need: listening, practical help or company'
+- Share a small piece of information first
+- Notice whether they keep it private and respond kindly
+- If someone is dismissive, look for another person who respects your concerns
+emotions:
+- sadness
+- others
+role_affinity:
+- peer
+- counsellor
+sources:
+- source_id: pm_plus
+  pages:
+  - 67
+  - 68
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

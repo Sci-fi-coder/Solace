@@ -1,0 +1,33 @@
+id: staying-well-afterwards
+title: Staying well after support ends
+category: psychoeducation
+summary: Skills last when they are practised regularly, much like a new language. At the end of a period
+  of support, it helps to review what has improved, credit the person's effort and keep notes for reference.
+  If a difficult situation returns, regular practice gives you a better chance of managing it.
+when_to_use:
+- The person feels better and wonders what happens next
+- A conversation is wrapping up
+when_not_to_use:
+- Do not close without checking whether the person feels ready
+- Do not imply that problems will never return
+steps:
+- Review what has improved and what has not
+- Credit the person's courage and effort
+- Ask what they will do to stay well
+- Keep notes or summaries handy
+- Use the skills when a difficult situation returns
+emotions:
+- positive
+- neutral
+role_affinity:
+- mentor
+- peer
+sources:
+- source_id: pm_plus
+  pages:
+  - 73
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

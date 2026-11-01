@@ -1,0 +1,39 @@
+id: grounding-emotional-storms
+title: Grounding during emotional storms
+category: technique
+summary: Grounding is a short routine for staying steady when thoughts and feelings surge. You notice
+  what is happening inside, slow your body down, and then turn your attention to the world around you.
+  It does not erase the feeling; it keeps you steady until the intensity passes.
+when_to_use:
+- Someone describes being flooded by fear, anger or sadness
+- Thoughts are racing and the person cannot focus on what is in front of them
+- A minute or two is available before or after a stressful moment
+when_not_to_use:
+- Do not promise that the feeling will disappear; grounding helps you ride it out
+- If the person is in immediate danger, practical safety comes before any exercise
+steps:
+- Notice what you are feeling and thinking right now
+- Slow your breathing and let your lungs empty fully before they refill
+- Press your feet into the floor and stretch your arms or press your hands together
+- Look around and name a few things you can see and hear
+- 'Take in your surroundings: the place, the people near you and the task in front of you'
+- Repeat as often as needed, even for a minute at a time
+emotions:
+- anxiety_fear
+- anger
+- sadness
+role_affinity:
+- teacher
+- counsellor
+sources:
+- source_id: dwm_stress
+  pages:
+  - 40
+  - 41
+  - 43
+  - 124
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

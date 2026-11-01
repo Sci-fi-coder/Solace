@@ -1,0 +1,34 @@
+id: person-is-the-expert
+title: The person is the expert on their own life
+category: communication_skill
+summary: In a supportive conversation the helper brings ideas and skills, but the person knows their own
+  life and problems best. Acting as a guide, like a teacher who can prepare you for an exam but cannot
+  sit it for you, builds confidence and avoids the idea that someone else will fix everything. The helper
+  shares skills and support; the person chooses what fits and practises at their own pace.
+when_to_use:
+- The person expects to be fixed or told what to do
+- Deciding how directive to be in a conversation
+when_not_to_use:
+- Do not present yourself as someone who will cure or fix
+- Do not give advice that overrides the person's own choices
+steps:
+- Explain your role as a guide who shares skills
+- Invite the person's own knowledge of their situation
+- Offer options rather than orders
+- Check what feels workable for them
+- Support them in practising on their own
+emotions:
+- neutral
+- others
+role_affinity:
+- mentor
+- counsellor
+sources:
+- source_id: pm_plus
+  pages:
+  - 27
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

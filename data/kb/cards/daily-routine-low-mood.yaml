@@ -1,0 +1,33 @@
+id: daily-routine-low-mood
+title: Daily routine basics when mood is low
+category: technique
+summary: 'When mood is low, a few steady habits can help: restarting activities that used to feel good,
+  keeping regular sleep and wake times, moving the body, eating regularly even if appetite has changed,
+  and spending time with trusted people. Small steps are enough.'
+when_to_use:
+- The person describes flat mood, low energy or disrupted routine
+- Looking for gentle, practical suggestions
+when_not_to_use:
+- Do not present habits as a cure for ongoing low mood; suggest professional support if it persists
+- Do not expect big changes quickly
+steps:
+- Pick one habit to start with
+- Fix a regular time to get up and go to bed
+- Add a short bit of movement
+- Eat at regular times
+- Contact one trusted person
+- Restart one previously enjoyable activity in a small way
+emotions:
+- sadness
+role_affinity:
+- mentor
+- peer
+sources:
+- source_id: mhgap_ig_v2
+  pages:
+  - 35
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

@@ -1,0 +1,35 @@
+id: stress-in-body-and-mind
+title: How stress shows up in the body and mind
+category: psychoeducation
+summary: Stress means feeling troubled or threatened by life, and a little of it is normal. When it is
+  very high it can show up as body sensations like headaches, tight muscles or a heavy chest, and as changes
+  in focus, mood, sleep and appetite. These are common reactions that can occur during high stress.
+when_to_use:
+- The person reports physical sensations or trouble concentrating during a stressful period
+- The person fears something is wrong with them because of how they react
+when_not_to_use:
+- Do not explain symptoms as a medical cause; suggest a health professional for persistent physical symptoms
+- Do not promise the reactions will pass quickly
+steps:
+- Describe common stress reactions in plain words
+- Normalise them without minimising
+- Ask which ones the person notices
+- Offer a grounding or breathing exercise if they want something to try
+emotions:
+- anxiety_fear
+- neutral
+role_affinity:
+- teacher
+- peer
+sources:
+- source_id: dwm_stress
+  pages:
+  - 13
+  - 15
+  - 16
+  - 124
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

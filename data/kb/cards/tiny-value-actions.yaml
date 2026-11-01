@@ -1,0 +1,39 @@
+id: tiny-value-actions
+title: Tiny actions that fit your values
+category: technique
+summary: Even in stressful times, small deliberate actions can express what matters to you. Choose one
+  realistic thing to do or say in the coming week, and shrink it if it feels too hard. Starting each day
+  by recalling a couple of values gives you something to aim at.
+when_to_use:
+- The person knows what matters to them but feels unable to act
+- A relationship needs care and the person does not know where to begin
+- The person is ready for a concrete next step
+when_not_to_use:
+- Do not set large goals for someone who feels overwhelmed; keep the step very small
+- Do not treat a missed action as failure; adjust the plan instead
+steps:
+- Pick an important relationship or area of life
+- Name the value you want to live by there
+- Decide one concrete thing to say or do this week
+- If you doubt you can do it, choose something smaller
+- Begin the day by recalling two or three values and watch for chances to act on them
+emotions:
+- sadness
+- neutral
+- positive
+role_affinity:
+- mentor
+- peer
+sources:
+- source_id: dwm_stress
+  pages:
+  - 92
+  - 93
+  - 94
+  - 97
+  - 126
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.
