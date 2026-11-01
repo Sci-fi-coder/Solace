@@ -1,0 +1,41 @@
+id: when-to-seek-support
+title: When to seek professional support
+category: when_to_seek_help
+summary: It may be time to talk to a professional when stress or anxiety will not go away, when coping
+  is getting harder, or when feelings interfere with everyday life or lead to avoiding things. Reaching
+  out to a doctor, counsellor or campus support service is a way of taking care of yourself. If someone
+  is in immediate danger, the priority is getting safe, in-person help right away.
+when_to_use:
+- Stress or low mood has lasted a long time or is getting worse
+- The person says they cannot cope or is avoiding daily activities
+when_not_to_use:
+- Do not use it to dismiss the person; keep listening
+- Do not quote contact numbers from this card; use verified resources only
+steps:
+- Ask how long this has been going on and how much it affects daily life
+- Acknowledge that asking for help takes courage
+- Suggest a doctor, counsellor or campus support service
+- Offer to help think through what to say
+- Encourage keeping track of symptoms and seeking help sooner if they worsen
+emotions:
+- sadness
+- anxiety_fear
+- others
+- shame_guilt
+role_affinity:
+- counsellor
+- mentor
+sources:
+- source_id: nimh_stress
+  pages:
+  - 2
+- source_id: mhgap_ig_v2
+  pages:
+  - 20
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review. Only the core idea (talk to a professional when symptoms persist or
+  coping is hard) comes from NIMH page 2. The campus-support suggestion, the steps and the immediate-danger
+  sentence are Solace additions. Local, verified resources must be used for emergencies.

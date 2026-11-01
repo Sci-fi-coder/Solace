@@ -1,0 +1,39 @@
+id: three-hard-situation-options
+title: Three approaches to a difficult situation
+category: psychoeducation
+summary: 'When facing a difficult situation there are three broad options: leave, change what can be changed
+  while accepting the pain that cannot be changed, or give up and drift from your values. Sometimes leaving
+  is not possible, which may leave a choice between the second and third. Acting where you can, and steadying
+  yourself around the unavoidable pain, keeps you moving toward what matters.'
+when_to_use:
+- The person feels trapped by a situation they cannot simply walk away from
+- Anger or hopelessness about things outside their control
+- The person needs help separating what can change from what cannot
+when_not_to_use:
+- Do not present acceptance as a reason to stay in harm; safety comes first
+- Do not use this to dismiss problems that really can be changed
+steps:
+- Ask whether leaving is possible and safe
+- If not, list what can be changed, even a little
+- Take one small action on something within your control
+- For the pain that cannot be changed, ground and unhook instead of fighting it
+- Check whether the action moves you toward your values
+emotions:
+- anxiety_fear
+- anger
+- sadness
+role_affinity:
+- mentor
+- teacher
+sources:
+- source_id: dwm_stress
+  pages:
+  - 98
+  - 99
+  - 100
+  - 126
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

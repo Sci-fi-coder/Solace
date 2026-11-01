@@ -1,0 +1,40 @@
+id: step-by-step-problem-solving
+title: Step-by-step problem solving
+category: technique
+summary: Problem solving turns a heavy worry into a workable plan. You separate problems you can influence
+  from those you cannot, choose one to begin with, describe it specifically, brainstorm many options,
+  and pick the most helpful and achievable. Then you plan small steps with a day and time and review how
+  it went.
+when_to_use:
+- The person is overwhelmed by a practical problem such as study, money or work
+- Worry loops around something that has possible next steps
+when_not_to_use:
+- Do not hand over ready-made solutions; help the person generate their own ideas
+- Do not start with the hardest problem; an early success builds confidence
+steps:
+- List your problems and mark which ones you can influence
+- Start with an easier, solvable one
+- 'Describe it specifically: when it happens and what it looks like'
+- Brainstorm many ideas without judging them yet
+- Choose options with few downsides that you can really carry out
+- Plan small steps with a day and time, then review how it went
+emotions:
+- anxiety_fear
+- others
+- neutral
+role_affinity:
+- mentor
+- teacher
+sources:
+- source_id: pm_plus
+  pages:
+  - 49
+  - 50
+  - 51
+  - 52
+  - 53
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

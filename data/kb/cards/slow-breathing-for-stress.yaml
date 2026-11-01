@@ -1,0 +1,37 @@
+id: slow-breathing-for-stress
+title: Slow breathing for stress
+category: technique
+summary: Slow breathing is a basic stress-management skill that eases the tight, coiled feeling stress
+  creates in the body. A rhythm of about three seconds in and three seconds out is a guide, but simply
+  slowing down matters more than counting perfectly. It improves with practice and works best when started
+  at the first signs of stress.
+when_to_use:
+- The person feels tense, jittery or breathless under stress
+- Racing heartbeat or constant tightness is part of the picture
+when_not_to_use:
+- Do not insist on exact counts or belly breathing if it adds worry
+- If breathing practice causes dizziness or panic, focus on the out-breath only and let the in-breath
+  come by itself
+steps:
+- Loosen up by shaking out your arms and legs or rolling your shoulders
+- Breathe out fully
+- Breathe in slowly for about three seconds
+- Breathe out slowly for about three seconds
+- If counting adds stress, just aim to breathe more slowly
+- Practise at set times as well as when stress rises
+emotions:
+- anxiety_fear
+- anger
+role_affinity:
+- teacher
+- mentor
+sources:
+- source_id: pm_plus
+  pages:
+  - 45
+  - 47
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

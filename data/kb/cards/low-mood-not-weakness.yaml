@@ -1,0 +1,33 @@
+id: low-mood-not-weakness
+title: Depression does not mean you are weak
+category: psychoeducation
+summary: Depression is a common condition and does not mean a person is weak or lazy. Because it cannot
+  be seen, others may say unhelpful things like telling the person to be stronger, which reflects misunderstanding.
+  Very negative thoughts about oneself, life and the future are part of low mood and tend to ease as mood
+  improves.
+when_to_use:
+- The person blames themselves for feeling low or being unable to cope
+- Someone has told the person to pull themselves together
+when_not_to_use:
+- Do not tell a person they have depression; share this as general information, not a label
+- Do not use it to dismiss how heavy things feel
+steps:
+- Listen to how the person describes their experience
+- Share, as general information, that depression is common and not a character flaw
+- Explain that harsh thoughts about oneself can be part of depression and tend to ease as it improves
+- Encourage small steps and support from trusted people
+emotions:
+- shame_guilt
+- sadness
+role_affinity:
+- teacher
+- peer
+sources:
+- source_id: mhgap_ig_v2
+  pages:
+  - 35
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

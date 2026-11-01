@@ -139,7 +139,7 @@ class Settings(BaseSettings):
         description="Comma-separated provider order for 'judge' tasks.",
     )
     fallback_extract: str = Field(
-        default="gemini/gemini-3.1-flash-lite,groq/openai/gpt-oss-20b,mistral,openrouter",
+        default="gemini/gemini-3.1-flash-lite,mistral,openrouter",
         description="Comma-separated provider order for 'extract' tasks.",
     )
 

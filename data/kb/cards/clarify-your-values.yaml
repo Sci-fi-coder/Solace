@@ -1,0 +1,38 @@
+id: clarify-your-values
+title: Clarify the values that matter to you
+category: technique
+summary: Values describe the kind of person you want to be, such as caring, patient or brave, and they
+  can guide choices even in hard times. Choosing three or four of them can help you keep in mind the qualities
+  you want to live by during difficult times. Thinking of a role model, and of how you want to treat the
+  people around you, makes the list more concrete.
+when_to_use:
+- The person feels directionless or stuck in a stressful period
+- A decision needs to be made and the person is unsure what matters to them
+- The person is ready to plan small actions
+when_not_to_use:
+- There are no right or best values; do not tell the person which ones to hold
+- Do not start this while the person is in acute distress; steady them first
+steps:
+- Look over a list of common values and notice which ones stand out
+- Pick three or four that feel most important to you
+- Think of someone you admire and what they do that you respect
+- Ask which of those qualities you want to show to the people around you
+- Remember that values apply to how you treat yourself as well as others
+emotions:
+- neutral
+- others
+- positive
+role_affinity:
+- mentor
+- counsellor
+sources:
+- source_id: dwm_stress
+  pages:
+  - 87
+  - 88
+  - 89
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

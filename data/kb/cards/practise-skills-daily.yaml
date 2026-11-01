@@ -1,0 +1,36 @@
+id: practise-skills-daily
+title: Practising coping skills in everyday moments
+category: technique
+summary: Coping skills improve with regular practice, much like learning a new language. Practising for
+  a minute or two in ordinary moments, such as while waiting or before a meal, makes the skills easier
+  to use when stress is high. Planning when and where to practise helps, and forgetting now and then is
+  normal.
+when_to_use:
+- The person has learned a skill but does not use it when stressed
+- Someone asks how to make a technique stick
+when_not_to_use:
+- Do not frame missed practice as failure
+- Do not introduce many skills at once; one at a time works better
+steps:
+- Choose a regular cue, such as waking up, a meal or lying in bed
+- Start with one or two minutes
+- Make a simple plan for when, where and how often
+- Use reminders if you forget
+- Review short summary notes to refresh the steps
+emotions:
+- neutral
+- positive
+role_affinity:
+- mentor
+- teacher
+sources:
+- source_id: dwm_stress
+  pages:
+  - 53
+  - 77
+  - 79
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

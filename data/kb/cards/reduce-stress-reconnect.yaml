@@ -1,0 +1,36 @@
+id: reduce-stress-reconnect
+title: Reducing stressors and rebuilding social connections
+category: technique
+summary: When someone is struggling, look for pressures that can be eased, such as relationship, work,
+  money or study problems, and bring back contact with family, friends and community activities they once
+  enjoyed. Simple stress management, such as relaxation or problem solving, adds to this. Practical stress
+  relief and social reconnection often work best together.
+when_to_use:
+- The person is under several pressures at once
+- Social contact has dropped since things got hard
+when_not_to_use:
+- Do not push the person back into a harmful or unsafe relationship
+- Do not overlook abuse; those situations call for protection and professional help
+steps:
+- Ask what pressures are weighing on the person right now
+- Pick one that could be eased
+- Recall past social activities that felt supportive
+- Choose one to restart in a small way
+- Add a simple stress skill such as relaxation or problem solving
+emotions:
+- sadness
+- others
+- anxiety_fear
+role_affinity:
+- mentor
+- counsellor
+sources:
+- source_id: mhgap_ig_v2
+  pages:
+  - 20
+  - 35
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

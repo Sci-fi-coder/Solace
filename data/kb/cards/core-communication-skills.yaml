@@ -1,0 +1,40 @@
+id: core-communication-skills
+title: Core communication skills for supporters
+category: communication_skill
+summary: Good supportive conversations start in a calm, private, welcoming setting with active listening
+  and no interruptions. Use simple language, open questions and short summaries to check understanding.
+  Stay friendly and non-judgemental, and respond with extra sensitivity when someone shares something
+  painful.
+when_to_use:
+- Starting any supportive conversation
+- The person has just shared something difficult
+- Choosing between asking a question and giving information
+when_not_to_use:
+- Do not rush to advice before listening
+- Do not promise total secrecy if someone's safety may be at risk
+steps:
+- Find a calm, private space where possible
+- Listen first and let the person speak without interruption
+- Use simple, clear language and open-ended questions
+- Summarise what you heard and check you understood
+- Acknowledge that sharing was difficult
+- Stay patient and non-judgemental
+emotions:
+- neutral
+- others
+- shame_guilt
+role_affinity:
+- counsellor
+- peer
+sources:
+- source_id: mhgap_ig_v2
+  pages:
+  - 14
+- source_id: pm_plus
+  pages:
+  - 23
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.

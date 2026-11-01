@@ -48,6 +48,9 @@ from app.llm.providers import (
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+UNSUPPORTED_STRUCTURED_EXTRACTION_MODELS = {
+    ("groq", "openai/gpt-oss-20b"),
+}
 
 
 # ── Custom errors ─────────────────────────────────────────────────────────────
@@ -353,7 +356,6 @@ class LLMGateway:
 
         Raises:
             GatewayExhaustedError: When all providers in the chain fail.
-            StructuredOutputError: When json_schema is provided but output cannot be parsed.
         """
         # Apply pre_send_filter hooks
         filtered = self._apply_filters(messages)
@@ -378,6 +380,17 @@ class LLMGateway:
                 reason = self._skipped_providers.get(provider_name, "provider unavailable")
                 attempts.append(self._skip_attempt(provider_name, model, reason))
                 continue
+            if task == TaskKind.extract and (provider_name, model) in (
+                UNSUPPORTED_STRUCTURED_EXTRACTION_MODELS
+            ):
+                attempts.append(
+                    self._skip_attempt(
+                        provider_name,
+                        model,
+                        "structured extraction unsupported for this model",
+                    )
+                )
+                continue
             with _PROCESS_DISABLED_LOCK:
                 disabled_reason = _PROCESS_DISABLED_PROVIDERS.get(provider_name)
             if disabled_reason is not None:
@@ -386,7 +399,7 @@ class LLMGateway:
                 )
                 continue
             if self._is_in_cooldown(provider_name):
-                attempts.append(self._skip_attempt(provider_name, model, "cooldown"))
+                attempts.append(self._skip_attempt(provider_name, model, "cooling down"))
                 continue
             reasoning_effort = self._task_reasoning_efforts.get(
                 task.value,
@@ -423,9 +436,22 @@ class LLMGateway:
             )
 
             if json_schema is not None:
-                result = self._parse_structured(
-                    result, json_schema, provider_name, provider, messages
-                )
+                try:
+                    result = self._parse_structured(
+                        result, json_schema, provider_name, provider, messages
+                    )
+                except StructuredOutputError as exc:
+                    summary = self._exception_summary(exc)
+                    attempts.append(
+                        self._attempt(provider_name, model, "failed", summary)
+                    )
+                    logger.warning(
+                        "Provider '%s' returned invalid structured output; "
+                        "falling through. Error: %s",
+                        provider_name,
+                        summary,
+                    )
+                    continue
 
             return result
 
@@ -756,11 +782,30 @@ class LLMGateway:
         except RateLimitError as exc:
             self._set_cooldown(provider_name)
             raise StructuredOutputError(
-                f"Repair call was rate-limited for provider={provider_name}: {exc}"
+                f"Repair call was rate-limited for provider={provider_name}."
             ) from exc
         except Exception as exc:
+            status = getattr(exc, "status", getattr(exc, "status_code", None))
+            status_detail = f" HTTP {status}" if isinstance(status, int) else ""
+            message = str(exc).casefold()
+            safe_code = next(
+                (
+                    code
+                    for code in (
+                        "json_validate_failed",
+                        "invalid_request_error",
+                        "rate_limit_exceeded",
+                        "insufficient_quota",
+                        "model_not_found",
+                    )
+                    if code in message
+                ),
+                "",
+            )
+            code_detail = f" {safe_code}" if safe_code else ""
             raise StructuredOutputError(
-                f"Repair call failed for provider={provider_name}: {exc}"
+                f"Repair call failed for provider={provider_name} "
+                f"({type(exc).__name__}{status_detail}{code_detail})."
             ) from exc
 
         parsed2, error2 = self._try_parse(repair_result.text, schema)
@@ -772,8 +817,7 @@ class LLMGateway:
 
         raise StructuredOutputError(
             f"Could not parse structured output after repair. "
-            f"Schema={schema.__name__}. Error: {error2}. "
-            f"Raw: {repair_result.text[:200]}"
+            f"Schema={schema.__name__}. Error: {error2}."
         )
 
     @staticmethod
@@ -786,9 +830,9 @@ class LLMGateway:
             data = json.loads(text)
             return schema.model_validate(data), None
         except json.JSONDecodeError as exc:
-            return None, f"JSONDecodeError: {exc}"
-        except ValidationError as exc:
-            return None, str(exc)
+            return None, f"invalid JSON at line {exc.lineno}, column {exc.colno}"
+        except ValidationError:
+            return None, "schema validation failed"
 
     # ── Observability helpers ─────────────────────────────────────────────────
 

@@ -6,7 +6,88 @@
 ---
 
 ## Current Branch
-`layer-1-safety-emotion`
+`layer-2a-cards`
+
+---
+
+## Session: 2026-10-31 — Layer 2a extraction resilience and source selection
+
+### Done
+- Changed `kb_draft_cards` to use the normal `app.config.settings` loader and report configured
+  provider names only. Failures now show one safe error line and per-provider attempts; traceback
+  output is opt-in with `--debug`.
+- Made structured-output parse and repair failures provider-local gateway failures. The gateway
+  records each failed provider and continues through the chain; all-provider failure retains the
+  complete attempts list.
+- Probed Groq `openai/gpt-oss-20b` with `reasoning_effort=low`, `max_tokens=8192`, and a strict
+  JSON Schema shaped from the card schema. Strict schema mode succeeded once and failed once on
+  the card id pattern, so this model is excluded from extraction only. Other chains and defaults
+  remain unchanged.
+- Replaced page-wide source exclusion with line-level contact/medication sanitisation and a
+  200-character minimum. Added mhGAP deny-list ranges based on PDF section headings and
+  `include_pages: "13-20,35"` to prioritize essential care, communication, and psychosocial
+  material.
+- Dry-run diagnostics now list selected PDF pages and every excluded page grouped by reason.
+
+### Verification
+- Baseline `pytest -q`: 215 passed, 1 deselected.
+- Focused gateway/config/KB tests: 46 passed.
+- Pre-change dry run: mhGAP 14 pages, PM+ 13, DWM stress 35, NIMH 1.
+- Post-change dry run: mhGAP 13 pages, PM+ 11, DWM stress 35, NIMH 2.
+- Groq synthetic structured probe: one of two repeated strict-schema card responses validated;
+  the other failed with `json_validate_failed` for the card-id pattern. No generated card was
+  saved.
+- Exact DWM dry-run reproduction selected pages 21, 24, and 25 (818 sanitized characters); it
+  made no gateway/API calls.
+- Final `pytest -q`: 224 passed, 1 deselected. `ruff check .` and `git diff --check` passed.
+
+### Known issues
+- PM+ still uses the existing local extracted JSON while its exact-mapped raw PDF filename remains
+  absent; no source registry mapping was changed.
+- Card generation/collection validation remains unverified; this task did not make real drafting
+  calls.
+
+### Next
+- Review the proposed mhGAP page ranges and dry-run exclusions, then continue Layer 2a card review
+  only. Do not begin Layer 2b.
+
+---
+
+## Session: 2026-10-30 — Layer 2a source registry and card drafts
+
+### Done
+- Created `layer-2a-cards` directly from `main`; confirmed the Layer 1 merge is present on
+  `main` before starting.
+- Inventoried `KB_RAW_DIR` by exact filename. Matched mhGAP (173 pages), DWM stress (132 pages),
+  and NIMH stress (2 pages); the mapped PM Plus filename is missing. The similarly named
+  `WHO_MSD_MER_18.5_eng.pdf` is unmatched and was not extracted.
+- Added the source registry, page-preserving PyMuPDF extraction, card schema, cached structured
+  drafting workflow, YAML validator, and offline tests. No PDF was copied into the repository.
+- Extracted the three exact-matched PDFs to ignored `data/kb_work/`; DWM had no extractable text
+  on PDF pages 2, 6, and 129–131. mhGAP and NIMH had no blank pages.
+- Added safe-page selection and line-level removal of phone/URL/helpline contact material before
+  sending selected text to the gateway. Invalid citations remain in YAML with `needs_review`.
+
+### Verification
+- Baseline `pytest -q`: 195 passed, 1 deselected.
+- Focused Layer 2a tests: 20 passed, including synthetic PDF extraction, banned-content patterns,
+  citation review, cache reuse, and quota-stop behavior.
+- Final `pytest`: 215 passed, 1 deselected. `ruff check .`, `git diff --check`, and
+  `compileall` passed. Tests were run without implicit dotenv loading.
+- Drafting was attempted, but no enabled provider credentials were available in the process
+  environment. The CLI now exits before provider dispatch in that case; real API calls: 0,
+  cards drafted: 0.
+
+### Known issues
+- PM Plus remains unavailable until the exact mapped filename is supplied; the unmatched
+  similarly named PDF is intentionally ignored.
+- No card collection exists yet, so the collection validator and required emotion/category
+  coverage remain unverified. The implementation is not committed or pushed.
+
+### Next
+- Configure an enabled LLM provider through process environment settings (without sharing key
+  values in chat), rerun `python -m scripts.kb_draft_cards --limit 30`, inspect generated cards,
+  run `python -m scripts.kb_validate`, then commit and push `layer-2a-cards`.
 
 ---
 

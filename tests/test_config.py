@@ -28,19 +28,24 @@ def test_unrecognized_environment_variables_are_ignored() -> None:
     assert not hasattr(config, "tavily_api_key")
 
 
-def test_default_model_fallbacks_use_gemini_lite_before_groq() -> None:
-    """Cheap-task defaults try verified Gemini Flash Lite before Groq GPT-OSS."""
+def test_extract_fallback_excludes_groq_gpt_oss() -> None:
+    """Structured extraction avoids the unsupported Groq GPT-OSS model only."""
     config = Settings(_env_file=None)
 
     assert config.groq_model == "openai/gpt-oss-20b"
     assert config.fallback_converse.split(",")[0] == "gemini"
-    for task in ("classify", "judge", "extract"):
+    for task in ("classify", "judge"):
         chain = config.get_fallback_chain(task)
         assert chain[:2] == [
             "gemini/gemini-3.1-flash-lite",
             "groq/openai/gpt-oss-20b",
         ]
         assert all(not entry.startswith("cerebras") for entry in chain)
+    assert config.get_fallback_chain("extract") == [
+        "gemini/gemini-3.1-flash-lite",
+        "mistral",
+        "openrouter",
+    ]
 
 
 def test_env_example_lists_all_settings_as_empty_values() -> None:

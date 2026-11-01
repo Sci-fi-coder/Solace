@@ -1,0 +1,36 @@
+id: everyday-coping-habits
+title: Everyday coping habits for stress
+category: technique
+summary: Working out your stress triggers and which coping habits help is a matter of trial and error.
+  Options include journaling, relaxation or mindfulness exercises, regular exercise and meals, a steady
+  sleep routine, avoiding excess caffeine, challenging unhelpful thoughts and reaching out to supportive
+  people. Different habits suit different people.
+when_to_use:
+- The person wants simple everyday things to try
+- Stress is building up around study or work
+when_not_to_use:
+- Do not give a long list all at once
+- Do not present habits as a replacement for professional support when stress is overwhelming
+steps:
+- Notice what triggers your stress
+- Try one habit at a time
+- Keep a short journal
+- Add regular meals, movement and a sleep routine
+- Avoid excess caffeine
+- Reach out to a supportive person
+emotions:
+- anxiety_fear
+- neutral
+- positive
+role_affinity:
+- mentor
+- teacher
+sources:
+- source_id: nimh_stress
+  pages:
+  - 2
+reviewed: true
+notes: Paraphrased from the cited PDF pages (1-based PDF page numbers, not printed page numbers). Entries
+  under when_not_to_use may add conservative cautions that are Solace design choices, not statements from
+  the source. Drafted with AI assistance and checked against the cited pages by an AI verifier; see the
+  reviewed flag for human review.
