@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from app.contracts import Message, SafetyLevel
+from app.pipeline.retrieval import CardLibrary
 from app.safety.classifier import ClassifierResult
 from scripts.eval_safety import CachedClassifier, _print_classifier_differences
 
@@ -39,6 +41,37 @@ def test_evaluation_sets_meet_minimum_synthetic_sample_counts() -> None:
     assert len(safety_rows) >= 80
     assert len(emotion_rows) >= 40
     assert all(isinstance(json.loads(row), dict) for row in safety_rows + emotion_rows)
+
+
+def test_retrieval_eval_has_first_person_cases_hinglish_and_empty_cases() -> None:
+    """Retrieval data meets the case-count, language, and planner-query requirements."""
+    data_path = Path(__file__).parent / "data" / "retrieval_eval.jsonl"
+    cases = [
+        json.loads(line)
+        for line in data_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    retrieval_cases = [case for case in cases if not case.get("expect_empty", False)]
+    empty_cases = [case for case in cases if case.get("expect_empty", False)]
+    first_person = re.compile(
+        r"\b(?:i|i'm|i've|my|me|mujhe|main|mujh|mera|meri|apne|apni)\b",
+        re.IGNORECASE,
+    )
+    hinglish = re.compile(
+        r"\b(?:yaar|bahut|bohot|mujhe|nahi|nahin|lagta|raha|rahi|kar|hoon|hai|dil|bas)\b",
+        re.IGNORECASE,
+    )
+    valid_card_ids = {card.id for card in CardLibrary.load().all()}
+
+    assert len(cases) >= 50
+    assert len(empty_cases) >= 10
+    assert sum(bool(first_person.search(case["query"])) for case in retrieval_cases) >= 40
+    assert sum(bool(hinglish.search(case["query"])) for case in cases) >= 5
+    assert any(len(case["query"].split()) <= 8 for case in retrieval_cases)
+    assert all(
+        case["relevant_ids"] and set(case["relevant_ids"]) <= valid_card_ids
+        for case in retrieval_cases
+    )
 
 
 def test_llm_evaluation_cache_uses_message_hash_and_model_without_storing_text(

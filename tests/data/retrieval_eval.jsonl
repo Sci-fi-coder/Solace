@@ -58,3 +58,11 @@
 {"query": "Traffic was terrible and my meeting ran late, today was just so exhausting. Ugh, just needed to get that off my chest.", "relevant_ids": [], "expect_empty": true}
 {"query": "Mujhe bas vent karna tha thoda sa, dimag kharab ho gaya tha din bhar ke kaam se.", "relevant_ids": [], "expect_empty": true}
 {"query": "Alright, I'm heading off to bed now. Goodnight and talk to you soon!", "relevant_ids": [], "expect_empty": true}
+{"query": "I've been tense at my desk all week, and I keep noticing my shoulders pulled up by my ears.", "relevant_ids": ["stress-in-body-and-mind", "slow-breathing-for-stress"], "expect_empty": false}
+{"query": "I feel like I'm not doing anything that matters, and I want to choose one small action connected to what I care about.", "relevant_ids": ["tiny-value-actions", "clarify-your-values"], "expect_empty": false}
+{"query": "I get stuck replaying one awkward conversation and lose track of what I'm doing around me.", "relevant_ids": ["notice-name-refocus", "grounding-emotional-storms"], "expect_empty": false}
+{"query": "I want to be more present when someone close to me shares a problem, instead of rushing to answer.", "relevant_ids": ["core-communication-skills", "validating-feelings"], "expect_empty": false}
+{"query": "I feel nervous about talking to people after being alone for a long time, but I miss having company.", "relevant_ids": ["small-steps-after-isolation", "strengthen-social-support"], "expect_empty": false}
+{"query": "I want to understand why stress makes everything feel threatening and my thoughts jump to the worst outcome.", "relevant_ids": ["stress-versus-anxiety", "stress-in-body-and-mind"], "expect_empty": false}
+{"query": "I've made progress lately, and I'm worried I'll lose it when things become difficult again.", "relevant_ids": ["staying-well-afterwards", "practise-skills-daily"], "expect_empty": false}
+{"query": "I have several things to handle and feel frozen; I need help deciding on one first step.", "relevant_ids": ["three-hard-situation-options", "step-by-step-problem-solving"], "expect_empty": false}
