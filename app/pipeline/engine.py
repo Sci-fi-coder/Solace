@@ -1,0 +1,537 @@
+"""SolaceEngine: one call per user turn, safety first, structured session, local critic."""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from collections.abc import Sequence
+from typing import Any, Protocol, TypeVar
+
+from pydantic import BaseModel
+from sqlalchemy.orm import sessionmaker
+
+from app.contracts import (
+    ConductorDecision,
+    CriticVerdict,
+    EmotionalState,
+    EmotionReading,
+    Message,
+    Phase,
+    RetrievedItem,
+    Role,
+    SafetyLevel,
+    SafetyResult,
+    StepRecord,
+    TaskKind,
+    TurnTrace,
+)
+from app.pipeline import memory
+from app.pipeline.critic import check_reply, fallback_reply
+from app.pipeline.guardrails import (
+    Decision,
+    SessionRuntime,
+    enforce_plan,
+    render_state_summary,
+    state_from_plan,
+)
+from app.pipeline.prompts import build_planner_messages, build_reply_messages
+from app.pipeline.retrieval import CardLibrary, RetrieverLike, citations_for
+from app.pipeline.roles import ROLES, handoff_line
+from app.pipeline.types import PlannerOutput, ReplyOutput, SessionInfo, TurnOutput
+from app.safety.responses import CRISIS_TEMPLATE, ELEVATED_CHECK_IN, action_for
+from app.safety.sentinel import SafetyGate
+from app.storage import repository as repo
+
+logger = logging.getLogger(__name__)
+T = TypeVar("T", bound=BaseModel)
+_RANK = {SafetyLevel.none: 0, SafetyLevel.elevated: 1, SafetyLevel.crisis: 2}
+MAX_INPUT_CHARS = 2000
+
+
+class GatewayLike(Protocol):
+    """The slice of LLMGateway the engine uses (lets tests inject a scripted fake)."""
+
+    def generate(
+        self,
+        task: TaskKind,
+        messages: list[dict[str, str]],
+        *,
+        json_schema: type[T] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 800,
+    ) -> Any:
+        """Return an object with .parsed, .text, .provider, .model."""
+
+
+class EmotionReader(Protocol):
+    """EmotionRecognizer-compatible reader (optional)."""
+
+    def read(self, message: str) -> EmotionReading:
+        """Return an emotion reading."""
+
+
+def _ms(start: float) -> float:
+    return (time.perf_counter() - start) * 1000
+
+
+def _parse(result: Any, schema: type[T]) -> T:
+    parsed = getattr(result, "parsed", None)
+    if isinstance(parsed, schema):
+        return parsed
+    if isinstance(parsed, dict):
+        return schema.model_validate(parsed)
+    return schema.model_validate_json(getattr(result, "text", "") or "{}")
+
+
+class SolaceEngine:
+    """Runs the per-turn pipeline: safety, plan, guardrails, retrieval, reply, critic, memory."""
+
+    def __init__(
+        self,
+        gateway: GatewayLike,
+        factory: sessionmaker,
+        *,
+        library: CardLibrary | None = None,
+        retriever: RetrieverLike | None = None,
+        emotion_reader: EmotionReader | None = None,
+        safety_gate: SafetyGate | None = None,
+    ) -> None:
+        self._gateway = gateway
+        self._factory = factory
+        self._library = library or CardLibrary({})
+        self._retriever = retriever
+        self._emotion = emotion_reader
+        self._gate = safety_gate or SafetyGate(classifier=None)
+        self._runtimes: dict[str, SessionRuntime] = {}
+
+    # ── Sessions ──────────────────────────────────────────────────────────────
+
+    def start_session(self, user_id: str, display_name: str | None = None) -> SessionInfo:
+        """Create (or resume) a user and open a new session with a greeting."""
+        if repo.get_user(user_id, factory=self._factory) is None:
+            repo.create_user(user_id, display_name, factory=self._factory)
+        session_id = uuid.uuid4().hex[:12]
+        repo.create_session(session_id, user_id, factory=self._factory)
+        profile = repo.get_profile(user_id, factory=self._factory)
+        note = memory.resume_note(profile)
+        rt = SessionRuntime(
+            session_id=session_id,
+            user_id=user_id,
+            preferred_role=profile.preferred_role if profile else None,
+            themes=list(profile.recurring_themes) if profile else [],
+            resume_note=note,
+        )
+        text = memory.greeting(display_name or (profile.display_name if profile else None), note)
+        hello = Message(role="assistant", content=text, speaker_role=Role.counsellor)
+        rt.history.append(hello)
+        repo.append_message(session_id, hello, factory=self._factory)
+        self._runtimes[session_id] = rt
+        return SessionInfo(session_id=session_id, user_id=user_id, greeting=text, resume_note=note)
+
+    def end_session(self, session_id: str) -> dict[str, Any]:
+        """Store a deterministic summary for the next session and forget the runtime."""
+        rt = self._runtimes.pop(session_id)
+        summary = memory.session_summary(rt)
+        profile = repo.get_profile(rt.user_id, factory=self._factory)
+        base = memory.merge_profile(
+            profile, user_id=rt.user_id, display_name=None, update=_empty_update()
+        )
+        prefs = dict(base.communication_prefs)
+        prefs["last_session"] = summary
+        repo.save_profile(base.model_copy(update={"communication_prefs": prefs}), factory=self._factory)
+        return summary
+
+    def delete_user_data(self, user_id: str) -> dict[str, int]:
+        """Erase everything stored about a user (privacy requirement)."""
+        for sid in [s for s, r in self._runtimes.items() if r.user_id == user_id]:
+            self._runtimes.pop(sid)
+        return repo.delete_user_data(user_id, factory=self._factory)
+
+    # ── One turn ──────────────────────────────────────────────────────────────
+
+    def handle_turn(self, session_id: str, user_text: str) -> TurnOutput:
+        """Process one user message and return the reply plus the panels' contents."""
+        started = time.perf_counter()
+        text = user_text.strip()[:MAX_INPUT_CHARS]
+        if not text:
+            raise ValueError("Empty message.")
+        rt = self._runtimes[session_id]
+        turn_id = uuid.uuid4().hex[:12]
+        steps: list[StepRecord] = []
+
+        t0 = time.perf_counter()
+        gate = self._gate.check(text, rt.history, rt.gate_state)
+        steps.append(StepRecord(name="safety", summary=f"rules: {gate.level.value}", latency_ms=_ms(t0)))
+        if gate.level == SafetyLevel.crisis:
+            return self._finish_crisis(rt, text, turn_id, gate, steps, started)
+
+        emotion = self._read_emotion(text, steps)
+        plan, plan_result, planner_ok = self._plan(rt, text, emotion, steps)
+        safety = self._merge_safety(gate, plan, planner_ok, rt)
+        if safety.level == SafetyLevel.crisis:
+            return self._finish_crisis(rt, text, turn_id, safety, steps, started, emotion=emotion)
+
+        state_before = rt.state
+        state = state_from_plan(plan, state_before) if planner_ok else (state_before or _blank_state())
+        decision = enforce_plan(plan, rt, safety_level=safety.level, state=state)
+
+        items, cards = self._retrieve(decision, state, steps)
+        if decision.retrieve and not cards:
+            decision = _listen_only(decision)
+
+        reply_out, verdict, draft, provider_used, reply_ok = self._reply(
+            rt, decision, text, cards, items, safety.level == SafetyLevel.elevated, steps
+        )
+        final = reply_out.reply
+        if safety.level == SafetyLevel.elevated:
+            final = f"{final}\n\n{ELEVATED_CHECK_IN}"
+
+        citations = citations_for(
+            [c for c in reply_out.used_card_ids if any(i.doc_id == c for i in items)], self._library
+        )
+        handoff = (
+            handoff_line(decision.speaker)
+            if rt.last_speaker is not None and decision.speaker != rt.last_speaker
+            else None
+        )
+        degraded = (not planner_ok) or (not reply_ok) or safety.degraded
+        explanation = self._explain(decision, plan, planner_ok, reply_out, citations)
+        summary_text = render_state_summary(state if planner_ok or state_before else None)
+
+        trace = TurnTrace(
+            turn_id=turn_id,
+            session_id=session_id,
+            user_message=text,
+            safety=safety,
+            emotion=emotion,
+            state_before=state_before,
+            state_after=state,
+            decision=ConductorDecision(
+                phase=decision.phase,
+                speaker=decision.speaker,
+                reason=(plan.reason or "; ".join(decision.notes) or decision.move)[:300],
+                retrieve=decision.retrieve,
+                retrieve_query=decision.retrieve_query,
+            ),
+            retrieved=items,
+            draft=draft,
+            critic=verdict,
+            final_reply=final,
+            explanation=explanation,
+            steps=steps,
+            provider_used=provider_used,
+        )
+        self._commit(rt, session_id, text, final, decision, state, plan, reply_out, handoff, trace)
+        return TurnOutput(
+            reply=final,
+            speaker=decision.speaker,
+            speaker_name=ROLES[decision.speaker].name,
+            handoff=handoff,
+            phase=decision.phase,
+            safety_level=safety.level,
+            safety_action=safety.action,
+            state=state,
+            state_summary=summary_text,
+            explanation=explanation,
+            citations=citations,
+            move=decision.move,
+            degraded=degraded,
+            provider_used=provider_used,
+            latency_ms=_ms(started),
+            turn_id=turn_id,
+        )
+
+    # ── Steps ─────────────────────────────────────────────────────────────────
+
+    def _read_emotion(self, text: str, steps: list[StepRecord]) -> EmotionReading | None:
+        if self._emotion is None:
+            return None
+        t0 = time.perf_counter()
+        try:
+            reading = self._emotion.read(text)
+        except Exception as exc:  # optional signal; never block a turn
+            logger.warning("Emotion reader failed (%s).", type(exc).__name__)
+            return None
+        steps.append(StepRecord(name="emotion", summary=f"hint: {reading.label}", latency_ms=_ms(t0)))
+        return reading
+
+    def _plan(
+        self, rt: SessionRuntime, text: str, emotion: EmotionReading | None, steps: list[StepRecord]
+    ) -> tuple[PlannerOutput, Any, bool]:
+        t0 = time.perf_counter()
+        try:
+            result = self._gateway.generate(
+                TaskKind.extract,
+                build_planner_messages(rt, text, emotion),
+                json_schema=PlannerOutput,
+                temperature=0.2,
+                max_tokens=700,
+            )
+            plan = _parse(result, PlannerOutput)
+            steps.append(
+                StepRecord(
+                    name="planner",
+                    summary=f"{plan.move}/{plan.speaker.value}/{plan.phase.value}",
+                    latency_ms=_ms(t0),
+                )
+            )
+            return plan, result, True
+        except Exception as exc:
+            logger.warning("Planner failed (%s); using a safe fallback plan.", type(exc).__name__)
+            steps.append(StepRecord(name="planner", summary="failed: fallback plan", latency_ms=_ms(t0)))
+            return _fallback_plan(rt), None, False
+
+    def _merge_safety(
+        self, gate: SafetyResult, plan: PlannerOutput, planner_ok: bool, rt: SessionRuntime
+    ) -> SafetyResult:
+        level = max(gate.level, plan.safety_level, key=_RANK.__getitem__)
+        if level == gate.level and planner_ok:
+            return gate.model_copy(update={"degraded": False})
+        if level == gate.level:
+            return gate
+        rt.gate_state["crisis_seen"] = rt.gate_state.get("crisis_seen") or level == SafetyLevel.crisis
+        reasons = [*gate.reasons, f"planner:{plan.safety_level.value}"]
+        return SafetyResult(
+            level=level,
+            reasons=reasons,
+            source="rule+classifier" if gate.level != SafetyLevel.none else "classifier",
+            action=action_for(level),
+            degraded=False,
+        )
+
+    def _retrieve(
+        self, decision: Decision, state: EmotionalState, steps: list[StepRecord]
+    ) -> tuple[list[RetrievedItem], list[Any]]:
+        if not decision.retrieve or self._retriever is None:
+            return [], []
+        t0 = time.perf_counter()
+        emotions: Sequence[str] = [h.label for h in state.hypotheses[:2]]
+        try:
+            found = self._retriever.search_with_evidence(
+                decision.retrieve_query or "", emotions=emotions, role=decision.speaker.value, k=3
+            )
+        except Exception as exc:
+            logger.warning("Retrieval failed (%s).", type(exc).__name__)
+            found = []
+        items = [i for i in found if i.collection == "cards"]
+        cards = [c for c in (self._library.get(i.doc_id) for i in items) if c is not None][:2]
+        items = [i for i in items if any(c.id == i.doc_id for c in cards)]
+        steps.append(
+            StepRecord(name="retrieval", summary=f"{len(cards)} cards", latency_ms=_ms(t0))
+        )
+        return items, cards
+
+    def _reply(
+        self,
+        rt: SessionRuntime,
+        decision: Decision,
+        text: str,
+        cards: list[Any],
+        items: list[RetrievedItem],
+        elevated: bool,
+        steps: list[StepRecord],
+    ) -> tuple[ReplyOutput, CriticVerdict, str | None, str, bool]:
+        retrieved_ids = [i.doc_id for i in items]
+        feedback: list[str] | None = None
+        first_draft: str | None = None
+        provider_used = "fallback"
+        for attempt in range(2):
+            t0 = time.perf_counter()
+            try:
+                result = self._gateway.generate(
+                    TaskKind.converse,
+                    build_reply_messages(
+                        rt,
+                        role=decision.speaker,
+                        move=decision.move,
+                        question=decision.question,
+                        user_text=text,
+                        cards=cards,
+                        elevated=elevated,
+                        feedback=feedback,
+                    ),
+                    json_schema=ReplyOutput,
+                    temperature=0.6,
+                    max_tokens=500,
+                )
+                out = _parse(result, ReplyOutput)
+                provider_used = f"{getattr(result, 'provider', '?')}/{getattr(result, 'model', '?')}"
+            except Exception as exc:
+                logger.warning("Reply generation failed (%s).", type(exc).__name__)
+                steps.append(StepRecord(name="reply", summary="failed", latency_ms=_ms(t0)))
+                break
+            verdict, issues = check_reply(
+                out.reply,
+                role=decision.speaker,
+                move=decision.move,
+                retrieved_ids=retrieved_ids,
+                used_card_ids=out.used_card_ids,
+            )
+            steps.append(
+                StepRecord(
+                    name="critic",
+                    summary="passed" if verdict.passed else "issues: " + "; ".join(issues)[:120],
+                    latency_ms=_ms(t0),
+                )
+            )
+            if first_draft is None:
+                first_draft = out.reply
+            if verdict.passed:
+                return out, verdict, first_draft if attempt else None, provider_used, True
+            feedback = issues
+        safe = fallback_reply(decision.move, decision.question)
+        verdict, _ = check_reply(
+            safe, role=decision.speaker, move=decision.move, retrieved_ids=[], used_card_ids=[]
+        )
+        steps.append(StepRecord(name="fallback", summary="safe template used", latency_ms=0.0))
+        return ReplyOutput(reply=safe, explanation="A safe standard reply was used."), verdict, first_draft, provider_used, False
+
+    # ── Output helpers ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _explain(
+        decision: Decision,
+        plan: PlannerOutput,
+        planner_ok: bool,
+        reply: ReplyOutput,
+        citations: Sequence[Any],
+    ) -> str:
+        policy = ROLES[decision.speaker]
+        why = plan.reason if planner_ok and plan.reason else "keeping the conversation steady"
+        lines = [
+            f"{policy.name} ({decision.speaker.value}) is speaking: {why}",
+            f"Approach: {policy.paradigm}.",
+            f"What this turn does: {decision.move.replace('_', ' ')} (phase: {decision.phase.value}).",
+        ]
+        if reply.explanation:
+            lines.append(reply.explanation)
+        if decision.notes:
+            lines.append("Guardrails: " + "; ".join(decision.notes) + ".")
+        if citations:
+            lines.append("Grounded in: " + "; ".join(c.title for c in citations) + ".")
+        return "\n".join(lines)
+
+    def _finish_crisis(
+        self,
+        rt: SessionRuntime,
+        text: str,
+        turn_id: str,
+        safety: SafetyResult,
+        steps: list[StepRecord],
+        started: float,
+        *,
+        emotion: EmotionReading | None = None,
+    ) -> TurnOutput:
+        rt.gate_state["crisis_seen"] = True
+        explanation = "Your message suggested you may be in serious distress, so a fixed safety message was shown."
+        trace = TurnTrace(
+            turn_id=turn_id,
+            session_id=rt.session_id,
+            user_message=text,
+            safety=safety,
+            emotion=emotion,
+            final_reply=CRISIS_TEMPLATE,
+            explanation=explanation,
+            steps=steps,
+            provider_used="fixed-template",
+        )
+        rt.history.extend([Message(role="user", content=text), Message(role="assistant", content=CRISIS_TEMPLATE)])
+        rt.turn_count += 1
+        repo.append_message(rt.session_id, rt.history[-2], factory=self._factory)
+        repo.append_message(rt.session_id, rt.history[-1], factory=self._factory)
+        repo.save_trace(trace, factory=self._factory)
+        return TurnOutput(
+            reply=CRISIS_TEMPLATE,
+            speaker=None,
+            phase=rt.phase,
+            safety_level=SafetyLevel.crisis,
+            safety_action=safety.action,
+            state=rt.state,
+            state_summary=render_state_summary(rt.state),
+            explanation=explanation,
+            degraded=False,
+            provider_used="fixed-template",
+            latency_ms=_ms(started),
+            turn_id=turn_id,
+        )
+
+    def _commit(
+        self,
+        rt: SessionRuntime,
+        session_id: str,
+        text: str,
+        final: str,
+        decision: Decision,
+        state: EmotionalState,
+        plan: PlannerOutput,
+        reply: ReplyOutput,
+        handoff: str | None,
+        trace: TurnTrace,
+    ) -> None:
+        user_msg = Message(role="user", content=text)
+        bot_msg = Message(role="assistant", content=final, speaker_role=decision.speaker)
+        rt.history.extend([user_msg, bot_msg])
+        rt.state = state
+        rt.phase = decision.phase
+        rt.turn_count += 1
+        if decision.move == "ask_clarifying":
+            rt.questions_asked += 1
+        rt.last_move = decision.move
+        rt.turns_since_handoff = 0 if handoff else rt.turns_since_handoff + 1
+        rt.last_speaker = decision.speaker
+        if decision.move == "offer_technique":
+            rt.techniques_offered.extend(reply.used_card_ids)
+        for theme in plan.profile_update.themes:
+            tag = " ".join(theme.lower().split()[:3])
+            if tag and tag not in rt.themes:
+                rt.themes.append(tag)
+        if plan.profile_update.preferred_role is not None:
+            rt.preferred_role = plan.profile_update.preferred_role
+        try:
+            repo.append_message(session_id, user_msg, factory=self._factory)
+            repo.append_message(session_id, bot_msg, factory=self._factory)
+            repo.save_trace(trace, factory=self._factory)
+            profile = repo.get_profile(rt.user_id, factory=self._factory)
+            merged = memory.merge_profile(
+                profile, user_id=rt.user_id, display_name=None, update=plan.profile_update
+            )
+            repo.save_profile(merged, factory=self._factory)
+        except Exception as exc:  # storage trouble must not break the conversation
+            logger.error("Persisting a turn failed (%s).", type(exc).__name__)
+
+
+def _empty_update() -> Any:
+    from app.pipeline.types import ProfileUpdate
+
+    return ProfileUpdate()
+
+
+def _blank_state() -> EmotionalState:
+    return EmotionalState(intensity=0.5, confidence=0.2)
+
+
+def _fallback_plan(rt: SessionRuntime) -> PlannerOutput:
+    ask = rt.phase in (Phase.checkin, Phase.exploration) and rt.questions_asked < 3
+    return PlannerOutput(
+        phase=rt.phase,
+        speaker=rt.last_speaker or Role.counsellor,
+        move="ask_clarifying" if ask else "reflect",
+        confidence=rt.state.confidence if rt.state else 0.2,
+        reason="the planning step was unavailable, so a safe default was used",
+    )
+
+
+def _listen_only(decision: Decision) -> Decision:
+    return Decision(
+        phase=decision.phase,
+        speaker=decision.speaker,
+        move="reflect",
+        question=None,
+        retrieve=False,
+        retrieve_query=None,
+        notes=(*decision.notes, "no relevant card found: staying with listening"),
+    )
+
+
+__all__ = ["EmotionReader", "GatewayLike", "SolaceEngine"]
