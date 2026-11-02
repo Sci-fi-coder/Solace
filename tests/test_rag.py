@@ -141,6 +141,84 @@ def test_filter_fallback_returns_results(
         assert 0.0 <= item.score <= 1.0
 
 
+def test_filter_fallback_runs_when_filtered_results_miss_threshold(
+    tmp_path: Path, fake_embedder: FakeEmbedder, card_library: CardLibrary
+) -> None:
+    """A filtered result below threshold triggers an unfiltered retry."""
+    retriever = _make_retriever(tmp_path, fake_embedder, card_library)
+    _ingest_cards(retriever._cards_col, card_library, fake_embedder)
+
+    target = card_library.all()[0]
+    unmatched_emotion = next(
+        emotion
+        for candidate in card_library.all()
+        if candidate.id != target.id
+        for emotion in candidate.emotions
+        if emotion not in target.emotions
+    )
+    query = " ".join(
+        [target.title, target.summary, *target.when_to_use, *target.emotions]
+    )
+
+    results = retriever.search(
+        query,
+        emotions=[unmatched_emotion],
+        k=3,
+        min_similarity=0.999,
+    )
+
+    assert results
+    assert results[0].doc_id == target.id
+
+
+def test_emotion_and_role_filters_are_both_applied(
+    tmp_path: Path, fake_embedder: FakeEmbedder, card_library: CardLibrary
+) -> None:
+    """Emotion alternatives and role constraints use supported metadata filters."""
+    retriever = _make_retriever(tmp_path, fake_embedder, card_library)
+
+    where = retriever._build_where(
+        ["anxiety_fear", "sadness"], "teacher", "cards"
+    )
+    expected_emotions = sorted(
+        {
+            "|".join(card.emotions)
+            for card in card_library.all()
+            if {"anxiety_fear", "sadness"}.intersection(card.emotions)
+        }
+    )
+    expected_roles = sorted(
+        {
+            "|".join(card.role_affinity)
+            for card in card_library.all()
+            if "teacher" in card.role_affinity
+        }
+    )
+
+    assert where == {
+        "$and": [
+            {"emotions": {"$in": expected_emotions}},
+            {"role_affinity": {"$in": expected_roles}},
+        ]
+    }
+
+
+def test_retriever_surfaces_collection_errors(
+    tmp_path: Path, fake_embedder: FakeEmbedder, card_library: CardLibrary
+) -> None:
+    """Collection query failures remain visible instead of appearing as no-match."""
+
+    class BrokenCollection:
+        def query(self, **kwargs: object) -> dict[str, list[list[object]]]:
+            raise RuntimeError("synthetic collection failure")
+
+    retriever = _make_retriever(tmp_path, fake_embedder, card_library)
+    retriever._cards_col = BrokenCollection()
+
+    with pytest.raises(RuntimeError, match="synthetic collection failure"):
+        retriever.search("stress")
+
+
 # ── Test 3: Threshold returns empty ──────────────────────────────────────────
 
 

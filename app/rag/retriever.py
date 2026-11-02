@@ -97,18 +97,26 @@ class Retriever:
             A list of :class:`~app.contracts.RetrievedItem` instances, or an empty
             list when nothing reaches ``min_similarity`` (the "just listen" signal).
         """
+        if collection not in {"cards", "passages"}:
+            raise ValueError("collection must be 'cards' or 'passages'")
+        if k < 1:
+            raise ValueError("k must be at least 1")
+        if not 0.0 <= min_similarity <= 1.0:
+            raise ValueError("min_similarity must be between 0.0 and 1.0")
+
         col = self._cards_col if collection == "cards" else self._passages_col
 
         where: dict | None = self._build_where(emotions, role, collection)
 
         results = self._query_collection(col, query, k=k, where=where)
+        items = self._to_retrieved_items(results, collection, min_similarity)
 
-        # Fallback: if filters yielded nothing, retry without them
-        ids = results.get("ids", [[]])[0] if results else []
-        if where is not None and not ids:
+        # A filtered result below the threshold is still no result; retry unfiltered.
+        if where is not None and not items:
             results = self._query_collection(col, query, k=k, where=None)
+            items = self._to_retrieved_items(results, collection, min_similarity)
 
-        return self._to_retrieved_items(results, collection, min_similarity)
+        return items
 
     def search_with_evidence(
         self,
@@ -158,18 +166,34 @@ class Retriever:
 
         conditions: list[dict] = []
         if emotions:
-            # The metadata field stores emotions joined by "|"
-            # ChromaDB supports $contains for string fields
-            for emotion in emotions:
-                conditions.append({"emotions": {"$contains": emotion}})
+            requested_emotions = set(emotions)
+            emotion_values = sorted(
+                {
+                    "|".join(card.emotions)
+                    for card in self._card_library.all()
+                    if requested_emotions.intersection(card.emotions)
+                }
+            )
+            if not emotion_values:
+                return None
+            conditions.append({"emotions": {"$in": emotion_values}})
         if role:
-            conditions.append({"role_affinity": {"$contains": role}})
+            role_values = sorted(
+                {
+                    "|".join(card.role_affinity)
+                    for card in self._card_library.all()
+                    if role in card.role_affinity
+                }
+            )
+            if not role_values:
+                return None
+            conditions.append({"role_affinity": {"$in": role_values}})
 
         if not conditions:
             return None
         if len(conditions) == 1:
             return conditions[0]
-        return {"$or": conditions}
+        return {"$and": conditions}
 
     def _query_collection(
         self,
@@ -187,11 +211,7 @@ class Retriever:
         if where is not None:
             kwargs["where"] = where
 
-        try:
-            return col.query(**kwargs)  # type: ignore[union-attr]
-        except Exception:
-            # If filtered query fails (e.g. no matching docs), return empty
-            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+        return col.query(**kwargs)  # type: ignore[union-attr]
 
     def _to_retrieved_items(
         self,
