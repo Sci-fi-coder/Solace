@@ -475,3 +475,27 @@
 ### Next
 - Layer 2b audit and implementation are complete. Review retrieval quality before proceeding to
   the next project layer.
+
+---
+
+## Session: 2026-11-02 — Layer 6 Streamlit UI
+
+### Done
+- Added the Streamlit session UI, phase tracker, chat display, state and explanation panels,
+  safety presentations, trace expander, session summary, and confirmed deletion flow.
+- Added an in-memory scripted `DemoEngine` selected with `SOLACE_UI_DEMO=1`, plus AppTest
+  coverage for startup, replies, handoffs/citations, crisis presentation, and data deletion.
+- Added `requirements-ui.txt` and `docs/UI.md`; the application package manifest remains
+  unchanged.
+
+### Verification
+- `python -m pytest -q`: 307 passed, 1 deselected.
+- `ruff check .`: passed.
+- `python -m compileall -q ui tests/test_ui.py` and `git diff --check`: passed.
+- UI tests use scripted synthetic content and make no network calls.
+
+### Known issues
+- None identified. Real provider-backed UI interaction was not exercised; AppTest used demo mode.
+
+### Next
+- Review the UI interactively in demo mode, then continue with the next authorized project layer.
