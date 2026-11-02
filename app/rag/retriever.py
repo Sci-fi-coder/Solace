@@ -14,11 +14,12 @@ if TYPE_CHECKING:
 
 
 def _dist_to_sim(distance: float) -> float:
-    """Convert ChromaDB cosine distance [0, 2] to similarity [0, 1].
+    """Convert ChromaDB cosine distance to cosine similarity.
 
-    ChromaDB cosine distance: 0 = identical, 2 = maximally opposite.
+    ChromaDB defines cosine distance as ``1 - cosine_similarity``. Negative
+    cosine values are clamped to zero because retrieval scores use [0, 1].
     """
-    sim = 1.0 - distance / 2.0
+    sim = 1.0 - distance
     return max(0.0, min(1.0, sim))
 
 

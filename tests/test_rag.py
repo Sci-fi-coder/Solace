@@ -14,6 +14,7 @@ import pytest
 from app.contracts import RetrievedItem
 from app.pipeline.retrieval import CardLibrary
 from app.rag.embedder import Embedder, FakeEmbedder
+from app.rag.retriever import _dist_to_sim
 from app.rag.sanitizer import PageText, build_deny_set, chunk_text, sanitize_page
 from app.rag.store import COLLECTION_CARDS, COLLECTION_PASSAGES, get_client, get_collection
 
@@ -89,6 +90,15 @@ def _ingest_cards(collection, library: CardLibrary, fake_embedder: FakeEmbedder)
 
 
 # ── Test 1: FakeEmbedder ranking ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("distance", "expected"),
+    [(0.0, 1.0), (0.5, 0.5), (1.0, 0.0), (2.0, 0.0)],
+)
+def test_cosine_distance_maps_to_similarity(distance: float, expected: float) -> None:
+    """Cosine distance converts to 1 - distance, clamped to [0, 1]."""
+    assert _dist_to_sim(distance) == expected
 
 
 def test_fake_embedder_similar_texts_rank_higher(fake_embedder: FakeEmbedder) -> None:
