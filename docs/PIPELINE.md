@@ -8,7 +8,10 @@ One user message = `SolaceEngine.handle_turn(session_id, text) -> TurnOutput` (a
    (hypotheses, trigger, duration, impact, need, confidence), judges semantic safety, and proposes
    phase / speaker / move / retrieval query. Final safety level = max(rules, planner); crisis sticks.
 3. **Guardrails** (`guardrails.py`, deterministic): phase machine, ask-before-advise, question budget (4),
-   "vent means listen", handoff throttle (min 2 turns), elevated -> counsellor + no advice, session turn limit.
+   "vent means listen", narrowing (an unclear picture turns a bare reflection into one question, never two in a row),
+   summarise before advising when entering `understanding`, `follow_up` instead of stacking a second technique
+   (reuses the previous card unless the planner sets `wants_new_help`), handoff throttle (min 2 turns),
+   elevated -> counsellor + no advice, session turn limit. Feelings are smoothed across turns (EMA).
 4. **Retrieval** only for `offer_technique` / `psychoeducation`. No relevant card => the move becomes `reflect`.
 5. **Role reply** (one structured call, `TaskKind.converse`): persona policy in `roles.py`
    (Anika counsellor, Rohan mentor, Meera teacher, Kabir peer).

@@ -176,8 +176,8 @@ class SolaceEngine:
         state = state_from_plan(plan, state_before) if planner_ok else (state_before or _blank_state())
         decision = enforce_plan(plan, rt, safety_level=safety.level, state=state)
 
-        items, cards = self._retrieve(decision, state, steps)
-        if decision.retrieve and not cards:
+        items, cards = self._retrieve(decision, state, steps, rt)
+        if (decision.retrieve or decision.move == "follow_up") and not cards:
             decision = _listen_only(decision)
 
         reply_out, verdict, draft, provider_used, reply_ok = self._reply(
@@ -300,9 +300,31 @@ class SolaceEngine:
             degraded=False,
         )
 
-    def _retrieve(
-        self, decision: Decision, state: EmotionalState, steps: list[StepRecord]
+    def _previous_card(
+        self, rt: SessionRuntime, steps: list[StepRecord]
     ) -> tuple[list[RetrievedItem], list[Any]]:
+        card = self._library.get(rt.techniques_offered[-1]) if rt.techniques_offered else None
+        if card is None:
+            return [], []
+        steps.append(StepRecord(name="retrieval", summary="reused previous card", latency_ms=0.0))
+        item = RetrievedItem(
+            collection="cards",
+            doc_id=card.id,
+            source=", ".join(src.source_id for src in card.sources),
+            text=f"{card.title}: {card.summary}",
+            score=1.0,
+        )
+        return [item], [card]
+
+    def _retrieve(
+        self,
+        decision: Decision,
+        state: EmotionalState,
+        steps: list[StepRecord],
+        rt: SessionRuntime,
+    ) -> tuple[list[RetrievedItem], list[Any]]:
+        if decision.move == "follow_up":
+            return self._previous_card(rt, steps)
         if not decision.retrieve or self._retriever is None:
             return [], []
         t0 = time.perf_counter()
@@ -333,6 +355,7 @@ class SolaceEngine:
         steps: list[StepRecord],
     ) -> tuple[ReplyOutput, CriticVerdict, str | None, str, bool]:
         retrieved_ids = [i.doc_id for i in items]
+        previous_bot = next((m.content for m in reversed(rt.history) if m.role == "assistant"), None)
         feedback: list[str] | None = None
         first_draft: str | None = None
         provider_used = "fallback"
@@ -367,6 +390,7 @@ class SolaceEngine:
                 move=decision.move,
                 retrieved_ids=retrieved_ids,
                 used_card_ids=out.used_card_ids,
+                previous_reply=previous_bot,
             )
             steps.append(
                 StepRecord(
@@ -480,7 +504,7 @@ class SolaceEngine:
         rt.last_move = decision.move
         rt.turns_since_handoff = 0 if handoff else rt.turns_since_handoff + 1
         rt.last_speaker = decision.speaker
-        if decision.move == "offer_technique":
+        if decision.move in ("offer_technique", "psychoeducation") and reply.used_card_ids:
             rt.techniques_offered.extend(reply.used_card_ids)
         for theme in plan.profile_update.themes:
             tag = " ".join(theme.lower().split()[:3])

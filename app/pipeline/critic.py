@@ -67,6 +67,7 @@ def check_reply(
     move: str,
     retrieved_ids: Sequence[str],
     used_card_ids: Sequence[str],
+    previous_reply: str | None = None,
 ) -> tuple[CriticVerdict, list[str]]:
     """Run every rule; return the contract verdict and a flat list of issues."""
     issues: list[str] = []
@@ -95,6 +96,11 @@ def check_reply(
     if _LIVED_OR_CREDENTIAL.search(text):
         role_fidelity = False
         issues.append("claims lived experience or professional credentials")
+
+    if previous_reply:
+        opening = re.findall(r"[a-z']+", text.lower())[:3]
+        if len(opening) == 3 and opening == re.findall(r"[a-z']+", previous_reply.lower())[:3]:
+            issues.append("starts the same way as the previous reply; vary the opening")
 
     questions = text.count("?")
     if questions > 1:

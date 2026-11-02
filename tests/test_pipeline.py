@@ -481,3 +481,80 @@ def test_engine_works_through_the_real_gateway_class(factory):
     out2 = engine2.handle_turn(start(engine2, "u9"), "I just feel so low")
     assert out2.degraded  # planner JSON missing -> safe plan, but the reply parsed through the real gateway
     assert "weighing on you most" in out2.reply
+
+
+# ── Fixes found in the first real conversation ───────────────────────────────
+
+
+def test_a_thank_you_does_not_erase_the_feelings_so_far():
+    first = state_from_plan(plan(emotions=[EmotionGuess(label="anxiety_fear", probability=0.9),
+                                           EmotionGuess(label="sadness", probability=0.1)]), None)
+    thanks = plan(emotions=[EmotionGuess(label="positive", probability=0.6),
+                            EmotionGuess(label="anxiety_fear", probability=0.4)])
+    second = state_from_plan(thanks, first)
+    assert second.hypotheses[0].label == "anxiety_fear"
+
+
+def test_unclear_picture_turns_a_bare_reflection_into_one_question():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=1)
+    p = plan(move="reflect", confidence=0.3)
+    decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
+    assert decision.move == "ask_clarifying" and decision.question
+
+
+def test_no_two_questions_in_a_row_and_no_questions_for_someone_venting():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=2,
+                        last_move="ask_clarifying")
+    p = plan(move="reflect", confidence=0.3)
+    assert enforce_plan(p, rt, safety_level=SafetyLevel.none,
+                        state=state_from_plan(p, None)).move == "reflect"
+    rt.last_move = None
+    vent = plan(move="reflect", confidence=0.3, need=UserNeed.vent)
+    assert enforce_plan(vent, rt, safety_level=SafetyLevel.none,
+                        state=state_from_plan(vent, None)).move == "reflect"
+
+
+def test_entering_understanding_summarises_before_any_advice():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=2)
+    p = plan(move="reflect", confidence=0.7, phase=Phase.understanding)
+    decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
+    assert decision.move == "summarise" and decision.phase == Phase.understanding
+
+
+def test_a_second_technique_right_after_one_becomes_a_follow_up_on_the_same_card(factory, library):
+    gw = ScriptedGateway(
+        plans=[plan(move="offer_technique", phase=Phase.guidance, need=UserNeed.act, confidence=0.8,
+                    retrieve=True, speaker=Role.mentor, wants_new_help=False)],
+        replies=[reply("Glad that helped. How did the slower breathing feel for you?",
+                       used_card_ids=["slow-breathing-grounding"])],
+    )
+    engine = make_engine(factory, gw, library, KeywordCardRetriever(library))
+    sid = start(engine)
+    rt = _guidance_runtime(engine, sid)
+    rt.last_move = "offer_technique"
+    rt.techniques_offered = ["slow-breathing-grounding"]
+    rt.last_speaker = Role.mentor
+    out = engine.handle_turn(sid, "thanks, that helps")
+    assert out.move == "follow_up"
+    assert [c.card_id for c in out.citations] == ["slow-breathing-grounding"]
+
+
+def test_asking_for_something_new_allows_a_new_technique():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.guidance, turn_count=5,
+                        last_move="offer_technique")
+    p = plan(move="offer_technique", phase=Phase.guidance, need=UserNeed.act, confidence=0.8,
+             retrieve=True, wants_new_help=True)
+    decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
+    assert decision.move == "offer_technique" and decision.retrieve
+
+
+def test_critic_flags_a_repeated_opening_and_long_step_lists():
+    prev = "It sounds like a lot of pressure is on you right now. What feels heaviest?"
+    now = "It sounds like the sleep loss is making everything harder. What has helped before?"
+    verdict, issues = check_reply(now, role=Role.counsellor, move="ask_clarifying",
+                                  retrieved_ids=[], used_card_ids=[], previous_reply=prev)
+    assert not verdict.passed and any("vary the opening" in i for i in issues)
+    steps = "Here is one way:\n1. Notice.\n2. Breathe out.\n3. Pause.\n4. Look around.\nWant to try it?"
+    verdict, issues = check_reply(steps, role=Role.mentor, move="offer_technique",
+                                  retrieved_ids=["a"], used_card_ids=["a"])
+    assert not verdict.role_fidelity and any("list of 4" in i for i in issues)

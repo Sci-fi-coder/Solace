@@ -131,11 +131,18 @@ def enforce_plan(
     phase = next_phase(rt.phase, plan.phase, plan, rt)
     if rt.turn_count == 0:
         phase = Phase.checkin if phase == Phase.checkin else Phase.exploration
-    if rt.phase == Phase.exploration and (
-        state.confidence >= 0.6 or rt.questions_asked >= 3
-    ) and phase == Phase.exploration:
+    if (
+        rt.phase in (Phase.checkin, Phase.exploration)
+        and phase == Phase.exploration
+        and rt.turn_count > 0
+        and (state.confidence >= 0.6 or rt.questions_asked >= 3)
+    ):
         phase = Phase.understanding
-        notes.append("moved to understanding: state is clear enough")
+        notes.append("moved to understanding: the picture is clear enough")
+    entering_understanding = phase == Phase.understanding and rt.phase in (
+        Phase.checkin,
+        Phase.exploration,
+    )
     move: Move = plan.move
     question = plan.clarifying_question
 
@@ -151,6 +158,9 @@ def enforce_plan(
         and rt.questions_asked < MAX_CLARIFYING
         and state.confidence < CONFIDENT
     )
+    advice_moves = ("offer_technique", "psychoeducation")
+    venting = state.need == UserNeed.vent
+
     if move == "ask_clarifying":
         if can_ask:
             question = _fallback_question(plan, rt)
@@ -158,14 +168,13 @@ def enforce_plan(
             move = "summarise" if _idx(phase) <= _idx(Phase.understanding) else "reflect"
             notes.append("question budget used or state clear: switched to " + move)
 
-    advice_moves = ("offer_technique", "psychoeducation")
     if move in advice_moves:
         allowed = _idx(phase) >= _idx(Phase.understanding) or (
             state.need == UserNeed.act and state.confidence >= 0.6
         )
-        if state.need == UserNeed.vent:
+        if venting:
             move = "reflect"
-            notes.append("user wants to be heard: listening first")
+            notes.append("the person wants to be heard: listening first")
         elif not allowed:
             if can_ask:
                 move, question = "ask_clarifying", _fallback_question(plan, rt)
@@ -173,9 +182,30 @@ def enforce_plan(
                 move = "summarise"
             notes.append("ask before advising: " + move)
 
+    # Follow up on a technique just offered instead of stacking a new one on top of it.
+    if move in advice_moves and rt.last_move in advice_moves and not plan.wants_new_help:
+        move = "follow_up"
+        notes.append("a technique was just offered: following up on it instead of adding another")
+
+    # Narrowing: while the picture is unclear, prefer one targeted question over a bare reflection.
+    if (
+        move == "reflect"
+        and can_ask
+        and not venting
+        and state.confidence < 0.5
+        and rt.last_move != "ask_clarifying"
+    ):
+        move, question = "ask_clarifying", _fallback_question(plan, rt)
+        notes.append("narrowing: asking one question to understand better")
+
+    # Entering the understanding phase: say back what we understood before suggesting anything.
+    if entering_understanding and move in ("reflect", "ask_clarifying") and not venting:
+        move, question = "summarise", None
+        notes.append("checking my understanding with you before suggesting anything")
+
     elevated = safety_level == SafetyLevel.elevated
     if elevated:
-        if move in advice_moves:
+        if move in advice_moves or move == "follow_up":
             move = "reflect"
         speaker = Role.counsellor
         notes.append("elevated safety concern: counsellor with a gentle check-in")
@@ -203,18 +233,23 @@ def enforce_plan(
 
 
 def state_from_plan(plan: PlannerOutput, previous: EmotionalState | None) -> EmotionalState:
-    """Merge the planner's reading into the running state model (facts persist across turns)."""
-    guesses = [g for g in plan.emotions if g.probability > 0]
-    total = sum(g.probability for g in guesses)
-    if guesses and total > 0:
-        hyps = [
-            EmotionHypothesis(label=g.label, probability=round(g.probability / total, 3))
-            for g in sorted(guesses, key=lambda g: g.probability, reverse=True)[:4]
+    """Merge the planner's reading into the running state (feelings are smoothed across turns)."""
+    fresh = {g.label: g.probability for g in plan.emotions if g.probability > 0}
+    old = {h.label: h.probability for h in previous.hypotheses} if previous else {}
+    alpha = 0.5 if old else 1.0  # a single "thanks, that helps" must not erase the picture so far
+    blended = {
+        label: alpha * fresh.get(label, 0.0) + (1 - alpha) * old.get(label, 0.0)
+        for label in {*fresh, *old}
+    }
+    total = sum(blended.values())
+    hyps = (
+        [
+            EmotionHypothesis(label=label, probability=round(p / total, 3))
+            for label, p in sorted(blended.items(), key=lambda kv: kv[1], reverse=True)[:4]
         ]
-    elif previous is not None:
-        hyps = list(previous.hypotheses)
-    else:
-        hyps = []
+        if total > 0
+        else []
+    )
     prev = previous
     return EmotionalState(
         hypotheses=hyps,

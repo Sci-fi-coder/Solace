@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from app.contracts import EmotionReading, Message, Role, SafetyLevel
+from app.contracts import EmotionReading, Message, Role, SafetyLevel, UserNeed
 from app.pipeline.guardrails import MAX_CLARIFYING, SessionRuntime
 from app.pipeline.roles import ROLES
 from app.rag.cards import Card
@@ -23,19 +23,23 @@ steps) or unknown. confidence 0-1 = how well you understand their situation. ope
 
 DECIDE: phase (checkin, exploration, understanding, guidance, closing); speaker (counsellor = feelings and \
 meaning; mentor = goals and one small next step; teacher = explain what is happening and teach one skill; \
-peer = casual validation); move (ask_clarifying, reflect, offer_technique, psychoeducation, summarise, close); \
+peer = casual validation); move (ask_clarifying, reflect, offer_technique, psychoeducation, summarise, close, follow_up); \
 clarifying_question = ONE short question that best separates your top two hypotheses or fills the biggest \
-unknown (only for ask_clarifying); retrieve = true only for offer_technique or psychoeducation; \
+unknown (always provide your best one, even if you choose another move); retrieve = true only for \
+offer_technique or psychoeducation; wants_new_help = true only if the person asks for something new or says \
+the last suggestion did not work; \
 retrieve_query = a short phrase about the feeling, trigger and need; profile_update = {preferred_role only if \
 the person states a preference, themes up to 3 short tags, values_note only if stated}.
 
-RULES: ask before advising. If the person mainly wants to vent, reflect. Choose the speaker whose style fits \
+RULES: ask before advising. If the person mainly wants to vent, reflect. If you just offered a technique and \
+the person reacts to it (yes, thanks, it helped), use move follow_up (never a second technique) or close if \
+they are done. reason = one short neutral sentence in the third person. Choose the speaker whose style fits \
 their need and keep the same speaker unless the need changes. Stop asking once you have asked 3 questions or \
 confidence is 0.7 or more: summarise or move on.
 
 Return JSON with exactly these keys: safety_level, emotions [{label, probability}], intensity, trigger, \
 duration, functional_impact, need, confidence, open_questions, phase, speaker, reason, move, \
-clarifying_question, retrieve, retrieve_query, profile_update {preferred_role, themes, values_note}."""
+clarifying_question, retrieve, retrieve_query, wants_new_help, profile_update {preferred_role, themes, values_note}."""
 
 
 def _recent(history: list[Message], n: int = 4, width: int = 280) -> str:
@@ -85,13 +89,24 @@ _MOVE_BRIEF = {
         "Reflect the feeling and what seems to matter underneath it. No advice. You may end with one "
         "gentle, open invitation to say more."
     ),
+    "reflect_vent": (
+        "The person wants to vent. Reflect the feeling and what seems to matter underneath it. No advice and "
+        "NO question; end with a short invitation such as 'I'm here, say more if you like.'"
+    ),
+    "follow_up": (
+        "You just offered the technique on the card below. Respond to what they said about it. If they want "
+        "to try it, guide them through only the next one or two steps together. If they said thanks or that "
+        "it helped, acknowledge that warmly and ask how it felt or whether they would like to wrap up. Do "
+        "NOT introduce a new technique."
+    ),
     "summarise": (
         "Give a short, human summary of what you understand (feelings, what set it off, what they seem to "
         "need) and ask whether it fits. No advice."
     ),
     "offer_technique": (
-        "Offer the ONE technique from the card below, in your own words and conversationally, with at most "
-        "{n} short steps, then ask if they would like to try it. Use only what the card says."
+        "Offer the ONE technique from the card below, in your own words and conversationally. Give only the "
+        "first {n} steps, then say you can carry on together if they would like, and ask if they want to try "
+        "it. Use only what the card says."
     ),
     "psychoeducation": (
         "Explain in 3-4 plain sentences, using only the card below, what they may be experiencing and that "
@@ -134,7 +149,8 @@ def build_reply_messages(
         "HARD RULES: never diagnose or name a disorder for the person; never mention medication; no phone "
         "numbers, links or helplines; no 'just relax' or 'don't worry'; never claim personal experiences; "
         "ask at most ONE question; under 110 words; warm, plain English (mirror a few Hinglish words only if "
-        "the person used them); speak to the person directly."
+        "the person used them); speak to the person directly; vary your openings and avoid starting with "
+        "'It sounds like' more than once in a conversation."
     )
     if elevated:
         system += (
@@ -145,7 +161,8 @@ def build_reply_messages(
         '\nReturn JSON only: {"reply": "...", "explanation": "one or two sentences on why you replied this '
         'way", "used_card_ids": []}. List a card id in used_card_ids only if you used that card.'
     )
-    brief = _MOVE_BRIEF[move].format(q=question or "", n=policy.max_numbered_steps)
+    brief_key = "reflect_vent" if move == "reflect" and rt.state and rt.state.need == UserNeed.vent else move
+    brief = _MOVE_BRIEF[brief_key].format(q=question or "", n=policy.max_numbered_steps)
     state_line = ""
     if rt.state is not None:
         top = ", ".join(f"{h.label} {h.probability:.0%}" for h in rt.state.hypotheses[:3])
@@ -158,6 +175,9 @@ def build_reply_messages(
         f"{state_line}Recent turns:\n{_recent(rt.history)}\n\nLatest message from the person:\n{user_text}\n\n"
         f"Your task now: {brief}{cards_text}"
     )
+    last_bot = next((m.content for m in reversed(rt.history) if m.role == "assistant"), None)
+    if last_bot:
+        user += f"\n\nYour last message began: \"{' '.join(last_bot.split()[:6])}...\". Begin differently."
     if feedback:
         user += "\n\nYour previous draft broke these rules, so rewrite it: " + "; ".join(feedback)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
