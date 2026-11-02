@@ -80,7 +80,7 @@ def _ingest_cards(collection, library: CardLibrary, fake_embedder: FakeEmbedder)
                 "emotions": "|".join(card.emotions),
                 "role_affinity": "|".join(card.role_affinity),
                 "source_ids": "|".join(s.source_id for s in card.sources),
-                "reviewed": 1 if card.reviewed else 0,
+                "reviewed": card.reviewed,
             }
         )
     if ids:
@@ -385,6 +385,10 @@ def test_reviewed_only_ingestion(
     # Collection counts should match
     assert col_reviewed.count() == reviewed_count
     assert col_all.count() == all_count
+    reviewed_metadata = col_reviewed.get(include=["metadatas"])["metadatas"]
+    all_metadata = col_all.get(include=["metadatas"])["metadatas"]
+    assert all(metadata["reviewed"] is True for metadata in reviewed_metadata)
+    assert {metadata["reviewed"] for metadata in all_metadata} == {True, False}
 
 
 def test_zero_argument_retriever_satisfies_retriever_like(

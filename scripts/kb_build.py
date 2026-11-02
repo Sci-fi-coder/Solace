@@ -92,7 +92,7 @@ def _ingest_cards(collection: object, library: CardLibrary) -> int:
                 "emotions": "|".join(card.emotions),
                 "role_affinity": "|".join(card.role_affinity),
                 "source_ids": "|".join(s.source_id for s in card.sources),
-                "reviewed": 1 if card.reviewed else 0,
+                "reviewed": card.reviewed,
             }
         )
 
@@ -180,7 +180,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.rebuild:
         logger.info("--rebuild: deleting existing collections ...")
-        existing_collections = set(client.list_collections())
+        existing_collections = {
+            collection.name for collection in client.list_collections()
+        }
         for collection_name in (COLLECTION_CARDS, COLLECTION_PASSAGES):
             if collection_name in existing_collections:
                 client.delete_collection(collection_name)
