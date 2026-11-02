@@ -1,0 +1,60 @@
+{"query": "I feel so sad and empty all the time, I can't get out of bed", "relevant_ids": ["daily-routine-low-mood"], "expect_empty": false}
+{"query": "I keep thinking terrible things about myself and I'm really harsh on myself", "relevant_ids": ["harsh-self-judgement", "speaking-kindly-to-yourself"], "expect_empty": false}
+{"query": "I've been isolating myself and avoiding friends for weeks", "relevant_ids": ["small-steps-after-isolation", "strengthen-social-support"], "expect_empty": false}
+{"query": "I feel really stressed and my body feels tense, heart racing", "relevant_ids": ["stress-in-body-and-mind", "slow-breathing-for-stress"], "expect_empty": false}
+{"query": "I feel emotionally overwhelmed and want to make space for my painful feelings instead of fighting them", "relevant_ids": ["making-room-for-feelings", "pushing-feelings-away"], "expect_empty": false}
+{"query": "I want to take small steps to get better but I don't know where to start", "relevant_ids": ["small-steps-after-isolation", "step-by-step-problem-solving"], "expect_empty": false}
+{"query": "I can't sleep, my mind just won't stop racing at night", "relevant_ids": ["settling-when-sleepless"], "expect_empty": false}
+{"query": "I keep pushing away my emotions instead of dealing with them", "relevant_ids": ["pushing-feelings-away", "making-room-for-feelings"], "expect_empty": false}
+{"query": "I don't know what I actually value in life anymore", "relevant_ids": ["clarify-your-values", "tiny-value-actions"], "expect_empty": false}
+{"query": "I want to learn how to breathe to calm down when I'm anxious", "relevant_ids": ["slow-breathing-for-stress", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "I feel overwhelmed and stuck in a really hard situation", "relevant_ids": ["three-hard-situation-options", "step-by-step-problem-solving"], "expect_empty": false}
+{"query": "I find it really hard to be kind to myself when I make mistakes", "relevant_ids": ["speaking-kindly-to-yourself", "harsh-self-judgement"], "expect_empty": false}
+{"query": "I need to learn some grounding techniques when emotions get too intense", "relevant_ids": ["grounding-emotional-storms", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "I feel like low mood is a sign that I am weak", "relevant_ids": ["low-mood-not-weakness"], "expect_empty": false}
+{"query": "I get really stressed about everything and feel like I can't cope", "relevant_ids": ["everyday-coping-habits", "stress-versus-anxiety"], "expect_empty": false}
+{"query": "I want to reconnect with people but I don't know how to reduce stress first", "relevant_ids": ["reduce-stress-reconnect", "strengthen-social-support"], "expect_empty": false}
+{"query": "Mujhe bahut akela feel ho raha hai, kuch accha nahi lag raha", "relevant_ids": ["small-steps-after-isolation", "daily-routine-low-mood"], "expect_empty": false}
+{"query": "Bahut tension hai yaar, kuch samajh nahi aa raha", "relevant_ids": ["stress-versus-anxiety", "three-hard-situation-options"], "expect_empty": false}
+{"query": "Main apne aap ko bahut bura bolti rehti hoon", "relevant_ids": ["speaking-kindly-to-yourself", "harsh-self-judgement"], "expect_empty": false}
+{"query": "Kuch karna hi nahi chahta, sab kuch ek dum flat lag raha hai", "relevant_ids": ["daily-routine-low-mood", "get-going-keep-doing"], "expect_empty": false}
+{"query": "I can't seem to focus on anything, activities I used to enjoy feel pointless", "relevant_ids": ["get-going-keep-doing", "daily-routine-low-mood"], "expect_empty": false}
+{"query": "I want to improve how I communicate with my partner when we argue", "relevant_ids": ["core-communication-skills"], "expect_empty": false}
+{"query": "I feel like I should do something small to help others feel better", "relevant_ids": ["small-acts-of-kindness"], "expect_empty": false}
+{"query": "I'm scared I'll fall back into depression after feeling better", "relevant_ids": ["staying-well-afterwards"], "expect_empty": false}
+{"query": "I notice a feeling but then I get lost in it and can't think straight", "relevant_ids": ["notice-name-refocus"], "expect_empty": false}
+{"query": "I want to work on my problem-solving skills step by step", "relevant_ids": ["step-by-step-problem-solving"], "expect_empty": false}
+{"query": "My stress is very physical - tight chest, headaches", "relevant_ids": ["stress-in-body-and-mind", "slow-breathing-for-stress"], "expect_empty": false}
+{"query": "I feel like I know what I want but I'm not taking any action", "relevant_ids": ["tiny-value-actions", "clarify-your-values"], "expect_empty": false}
+{"query": "I need someone to acknowledge how hard things are for me right now", "relevant_ids": ["validating-feelings", "person-is-the-expert"], "expect_empty": false}
+{"query": "I feel like people don't understand me or my background", "relevant_ids": ["respect-values-and-beliefs", "person-is-the-expert"], "expect_empty": false}
+{"query": "I want to build better daily habits to manage low mood", "relevant_ids": ["practise-skills-daily", "daily-routine-low-mood"], "expect_empty": false}
+{"query": "I keep avoiding things that make me anxious and it's getting worse", "relevant_ids": ["get-going-keep-doing", "everyday-coping-habits"], "expect_empty": false}
+{"query": "I don't know if I should see a doctor or therapist", "relevant_ids": ["when-to-seek-support"], "expect_empty": false}
+{"query": "I feel like there's no point in anything right now", "relevant_ids": ["making-room-for-feelings", "daily-routine-low-mood"], "expect_empty": false}
+{"query": "I want to feel grounded and calm during stressful moments", "relevant_ids": ["grounding-emotional-storms", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "Tension hoti hai toh saans lena bhi mushkil ho jaata hai", "relevant_ids": ["slow-breathing-for-stress", "stress-in-body-and-mind"], "expect_empty": false}
+{"query": "Yaar sab se baat karna chhod diya hai, bahut mushkil lag raha hai", "relevant_ids": ["small-steps-after-isolation", "strengthen-social-support"], "expect_empty": false}
+{"query": "I'm trying to accept my feelings instead of fighting them", "relevant_ids": ["making-room-for-feelings", "pushing-feelings-away"], "expect_empty": false}
+{"query": "breathing exercise anxious calm down quick", "relevant_ids": ["slow-breathing-for-stress", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "anxiety fear breathing slow down panic", "relevant_ids": ["slow-breathing-for-stress", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "sleep better night rumination", "relevant_ids": ["settling-when-sleepless"], "expect_empty": false}
+{"query": "low mood routine small steps", "relevant_ids": ["daily-routine-low-mood", "small-steps-after-isolation"], "expect_empty": false}
+{"query": "values meaning direction stuck", "relevant_ids": ["clarify-your-values", "tiny-value-actions"], "expect_empty": false}
+{"query": "problem solving options difficult situation", "relevant_ids": ["step-by-step-problem-solving", "three-hard-situation-options"], "expect_empty": false}
+{"query": "grounding emotional storm notice feet breath", "relevant_ids": ["grounding-emotional-storms", "slow-breathing-grounding"], "expect_empty": false}
+{"query": "unhook notice name thoughts refocus", "relevant_ids": ["notice-name-refocus"], "expect_empty": false}
+{"query": "Hello! Good morning.", "relevant_ids": [], "expect_empty": true}
+{"query": "Hi there, how are you doing today?", "relevant_ids": [], "expect_empty": true}
+{"query": "Namaste, kaise hain aap?", "relevant_ids": [], "expect_empty": true}
+{"query": "Hey, just checking in to say hi.", "relevant_ids": [], "expect_empty": true}
+{"query": "Thank you so much for listening, I feel much better now.", "relevant_ids": [], "expect_empty": true}
+{"query": "Thanks a lot for your time, that really helped.", "relevant_ids": [], "expect_empty": true}
+{"query": "Bahut shukriya aapka, thank you so much.", "relevant_ids": [], "expect_empty": true}
+{"query": "What is the weather like where you are?", "relevant_ids": [], "expect_empty": true}
+{"query": "I am just having my evening chai and watching the sunset.", "relevant_ids": [], "expect_empty": true}
+{"query": "Bas aise hi bore ho raha tha toh message kar diya.", "relevant_ids": [], "expect_empty": true}
+{"query": "I just really need to vent, my coworker took credit for my presentation and I'm so angry! No advice please, just venting.", "relevant_ids": [], "expect_empty": true}
+{"query": "Traffic was terrible and my meeting ran late, today was just so exhausting. Ugh, just needed to get that off my chest.", "relevant_ids": [], "expect_empty": true}
+{"query": "Mujhe bas vent karna tha thoda sa, dimag kharab ho gaya tha din bhar ke kaam se.", "relevant_ids": [], "expect_empty": true}
+{"query": "Alright, I'm heading off to bed now. Goodnight and talk to you soon!", "relevant_ids": [], "expect_empty": true}
