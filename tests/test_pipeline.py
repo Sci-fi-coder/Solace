@@ -182,7 +182,8 @@ def test_question_budget_forces_a_summary(factory):
 
 def test_high_confidence_moves_exploration_to_understanding():
     rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=2)
-    p = plan(confidence=0.8)
+    p = plan(confidence=0.8, trigger="exams", duration="2 weeks", functional_impact="poor sleep",
+             need=UserNeed.understand)
     decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
     assert decision.phase == Phase.understanding
     assert decision.move == "summarise"
@@ -352,11 +353,16 @@ def test_total_llm_failure_still_returns_a_safe_reply(factory):
 
 def test_handoff_line_and_throttle(factory):
     gw = ScriptedGateway(
-        plans=[plan(speaker=Role.counsellor), plan(speaker=Role.mentor), plan(speaker=Role.teacher)],
-        replies=[reply(), reply(), reply()],
+        plans=[plan(speaker=Role.counsellor, phase=Phase.understanding, move="reflect", need=UserNeed.vent),
+               plan(speaker=Role.mentor, phase=Phase.understanding, move="reflect", need=UserNeed.vent),
+               plan(speaker=Role.teacher, phase=Phase.understanding, move="reflect", need=UserNeed.vent)],
+        replies=[reply("That sounds heavy, and it makes sense. I'm here, say more if you like."),
+                 reply("Carrying that much is tiring. I'm here, say more if you like."),
+                 reply("Expectations can pile up fast. I'm here, say more if you like.")],
     )
     engine = make_engine(factory, gw)
     sid = start(engine)
+    engine._runtimes[sid].phase = Phase.understanding
     first = engine.handle_turn(sid, "I'm overwhelmed with college")
     assert first.handoff is None and first.speaker_name == "Anika"
     second = engine.handle_turn(sid, "mostly the deadlines")
@@ -391,7 +397,7 @@ def test_profile_memory_and_resume_note(factory):
     )
     engine = make_engine(factory, gw)
     sid = start(engine)
-    engine.handle_turn(sid, "exam pressure is huge, I like practical advice")
+    engine.handle_turn(sid, "exam pressure is huge, I'd prefer to talk to the mentor")
     engine.end_session(sid)
     again = engine.start_session("u1", "Sam")
     assert again.resume_note == "Last time we spoke about exam pressure."
@@ -516,7 +522,8 @@ def test_no_two_questions_in_a_row_and_no_questions_for_someone_venting():
 
 def test_entering_understanding_summarises_before_any_advice():
     rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=2)
-    p = plan(move="reflect", confidence=0.7, phase=Phase.understanding)
+    p = plan(move="reflect", confidence=0.7, phase=Phase.understanding, trigger="exams",
+             duration="2 weeks", functional_impact="poor sleep", need=UserNeed.understand)
     decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
     assert decision.move == "summarise" and decision.phase == Phase.understanding
 
@@ -558,3 +565,82 @@ def test_critic_flags_a_repeated_opening_and_long_step_lists():
     verdict, issues = check_reply(steps, role=Role.mentor, move="offer_technique",
                                   retrieved_ids=["a"], used_card_ids=["a"])
     assert not verdict.role_fidelity and any("list of 4" in i for i in issues)
+
+
+# ── Fixes found in the second real conversation ──────────────────────────────
+
+
+def test_confidence_cannot_exceed_the_evidence():
+    first = state_from_plan(plan(confidence=0.9, trigger="exams"), None)
+    assert first.confidence <= 0.35
+    full = state_from_plan(plan(confidence=0.95, trigger="exams", duration="2 weeks",
+                                functional_impact="no sleep", need=UserNeed.act), None)
+    assert full.confidence == pytest.approx(0.8)
+
+
+def test_asks_what_would_help_before_summarising_when_need_is_unknown():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=2,
+                        questions_asked=1, last_move="reflect")
+    p = plan(move="reflect", phase=Phase.understanding, confidence=0.9, trigger="exams",
+             duration="2 weeks", functional_impact="no sleep", need=UserNeed.unknown)
+    decision = enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state_from_plan(p, None))
+    assert decision.phase == Phase.exploration
+    assert decision.move == "ask_clarifying" and "talk it through" in (decision.question or "")
+
+
+def test_exploration_is_led_by_the_counsellor_unless_the_user_chose_someone():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=1)
+    p = plan(speaker=Role.mentor, move="reflect", need=UserNeed.vent)
+    state = state_from_plan(p, None)
+    assert enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state).speaker == Role.counsellor
+    rt.preferred_role = Role.mentor
+    assert enforce_plan(p, rt, safety_level=SafetyLevel.none, state=state).speaker == Role.mentor
+
+
+def test_elevated_turns_are_never_turned_into_narrowing_questions():
+    rt = SessionRuntime(session_id="s", user_id="u", phase=Phase.exploration, turn_count=1)
+    p = plan(move="reflect", confidence=0.2)
+    decision = enforce_plan(p, rt, safety_level=SafetyLevel.elevated, state=state_from_plan(p, None))
+    assert decision.move == "reflect"
+
+
+def test_role_preference_needs_an_explicit_statement():
+    from app.pipeline.memory import explicit_role_preference
+
+    assert explicit_role_preference("can I talk to the mentor instead") == Role.mentor
+    assert explicit_role_preference("I'd rather have a friend to talk to") == Role.peer
+    assert explicit_role_preference("can you give me something practical to try?") is None
+    assert explicit_role_preference("my mentor at college is great") is None
+
+
+def test_a_technique_request_is_never_answered_with_an_explainer_card(factory, library):
+    class MixedRetriever:
+        def search_with_evidence(self, query, *, emotions=None, role=None, k=3):
+            from app.contracts import RetrievedItem
+
+            return [RetrievedItem(collection="cards", doc_id=cid, source="x", text=cid, score=0.9)
+                    for cid in ("stress-versus-anxiety", "slow-breathing-for-stress")]
+
+    gw = ScriptedGateway(
+        plans=[plan(move="offer_technique", phase=Phase.guidance, need=UserNeed.act, confidence=0.8,
+                    trigger="exams", duration="2 weeks", functional_impact="no sleep", retrieve=True,
+                    speaker=Role.mentor)],
+        replies=[reply("A slow breath can steady you. Want to try it together right now?",
+                       used_card_ids=["slow-breathing-for-stress"])],
+    )
+    engine = make_engine(factory, gw, library, MixedRetriever())
+    sid = start(engine)
+    _guidance_runtime(engine, sid)
+    out = engine.handle_turn(sid, "can you give me something practical to try?")
+    assert [c.card_id for c in out.citations] == ["slow-breathing-for-stress"]
+
+
+def test_follow_up_fallback_fits_a_thank_you_and_debug_steps_are_exposed(factory):
+    verdict, issues = check_reply(fallback_reply("follow_up"), role=Role.mentor, move="follow_up",
+                                  retrieved_ids=[], used_card_ids=[])
+    assert verdict.passed, issues
+    assert "hard" not in fallback_reply("follow_up")
+    gw = ScriptedGateway(plans=[plan()], replies=[reply()])
+    engine = make_engine(factory, gw)
+    out = engine.handle_turn(start(engine), "I feel stuck")
+    assert out.debug_steps and out.debug_steps[0].startswith("safety")

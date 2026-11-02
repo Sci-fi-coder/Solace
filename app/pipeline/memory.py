@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from app.contracts import UserProfile
+from app.contracts import Role, UserProfile
 from app.pipeline.guardrails import SessionRuntime
 from app.pipeline.types import ProfileUpdate
 
@@ -76,3 +77,22 @@ def greeting(display_name: str | None, note: str | None) -> str:
     else:
         lines.append("What's on your mind today?")
     return " ".join(lines)
+
+
+_ROLE_WORDS = {
+    Role.mentor: r"mentor|rohan",
+    Role.counsellor: r"counsell?or|anika",
+    Role.teacher: r"teacher|meera",
+    Role.peer: r"peer|kabir|friend",
+}
+_PREFERENCE_CUE = re.compile(r"(?i)\b(prefer|rather|switch|talk to|speak to|bring in|go back to|want|like)\b")
+
+
+def explicit_role_preference(text: str) -> Role | None:
+    """A preferred role is stored only when the person names a persona AND states a preference."""
+    if not _PREFERENCE_CUE.search(text):
+        return None
+    for role, words in _ROLE_WORDS.items():
+        if re.search(rf"(?i)\b(?:{words})\b", text):
+            return role
+    return None

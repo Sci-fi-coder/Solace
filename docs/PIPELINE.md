@@ -11,7 +11,11 @@ One user message = `SolaceEngine.handle_turn(session_id, text) -> TurnOutput` (a
    "vent means listen", narrowing (an unclear picture turns a bare reflection into one question, never two in a row),
    summarise before advising when entering `understanding`, `follow_up` instead of stacking a second technique
    (reuses the previous card unless the planner sets `wants_new_help`), handoff throttle (min 2 turns),
-   elevated -> counsellor + no advice, session turn limit. Feelings are smoothed across turns (EMA).
+   elevated -> counsellor + no advice, session turn limit. Feelings are smoothed across turns (EMA). Confidence
+   is capped by evidence (trigger, duration, impact, need), so one message can never reach 'fairly sure'. The
+   counsellor leads exploration; the 'what would help most?' question is asked before summarising; a technique
+   request is only answered with a card of category `technique` (an explainer card needs `psychoeducation`).
+   A preferred role is stored only if the person explicitly asks for one.
 4. **Retrieval** only for `offer_technique` / `psychoeducation`. No relevant card => the move becomes `reflect`.
 5. **Role reply** (one structured call, `TaskKind.converse`): persona policy in `roles.py`
    (Anika counsellor, Rohan mentor, Meera teacher, Kabir peer).

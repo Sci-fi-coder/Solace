@@ -44,6 +44,9 @@ FALLBACKS: dict[str, str] = {
         "Let me check I'm following you. Does the picture I've shared of what you're going "
         "through feel about right?"
     ),
+    "follow_up": (
+        "I'm glad that was useful. Would you like to keep talking about it, or wrap up for today?"
+    ),
     "close": (
         "Thank you for talking with me today. Be gentle with yourself, and come back whenever "
         "you'd like to talk again."

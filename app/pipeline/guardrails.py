@@ -28,6 +28,10 @@ _FRIENDLY = {
     "neutral": "feeling flat or neutral",
     "positive": "something positive",
 }
+NEED_QUESTION = (
+    "Would it help more right now to talk it through, to understand what is going on, "
+    "or to find something practical to try?"
+)
 _GENERIC_QUESTIONS = [
     "What has been on your mind the most lately?",
     "When did you first notice this feeling?",
@@ -131,14 +135,23 @@ def enforce_plan(
     phase = next_phase(rt.phase, plan.phase, plan, rt)
     if rt.turn_count == 0:
         phase = Phase.checkin if phase == Phase.checkin else Phase.exploration
+    need_known = state.need != UserNeed.unknown
     if (
         rt.phase in (Phase.checkin, Phase.exploration)
         and phase == Phase.exploration
         and rt.turn_count > 0
-        and (state.confidence >= 0.6 or rt.questions_asked >= 3)
+        and ((state.confidence >= 0.6 and need_known) or rt.questions_asked >= 3)
     ):
         phase = Phase.understanding
         notes.append("moved to understanding: the picture is clear enough")
+    if (
+        phase == Phase.understanding
+        and rt.phase in (Phase.checkin, Phase.exploration)
+        and not need_known
+        and rt.questions_asked < 3
+    ):
+        phase = Phase.exploration
+        notes.append("still unsure what would help most: staying in exploration")
     entering_understanding = phase == Phase.understanding and rt.phase in (
         Phase.checkin,
         Phase.exploration,
@@ -160,6 +173,7 @@ def enforce_plan(
     )
     advice_moves = ("offer_technique", "psychoeducation")
     venting = state.need == UserNeed.vent
+    elevated = safety_level == SafetyLevel.elevated
 
     if move == "ask_clarifying":
         if can_ask:
@@ -176,7 +190,9 @@ def enforce_plan(
             move = "reflect"
             notes.append("the person wants to be heard: listening first")
         elif not allowed:
-            if can_ask:
+            if elevated:
+                move = "reflect"
+            elif can_ask:
                 move, question = "ask_clarifying", _fallback_question(plan, rt)
             else:
                 move = "summarise"
@@ -187,10 +203,23 @@ def enforce_plan(
         move = "follow_up"
         notes.append("a technique was just offered: following up on it instead of adding another")
 
+    # Narrowing step that matters most: find out what the person wants from this conversation.
+    if (
+        move in ("reflect", "ask_clarifying")
+        and can_ask
+        and not elevated
+        and not need_known
+        and rt.questions_asked >= 1
+        and rt.last_move != "ask_clarifying"
+    ):
+        move, question = "ask_clarifying", NEED_QUESTION
+        notes.append("narrowing: asking what would help most")
+
     # Narrowing: while the picture is unclear, prefer one targeted question over a bare reflection.
     if (
         move == "reflect"
         and can_ask
+        and not elevated
         and not venting
         and state.confidence < 0.5
         and rt.last_move != "ask_clarifying"
@@ -199,11 +228,10 @@ def enforce_plan(
         notes.append("narrowing: asking one question to understand better")
 
     # Entering the understanding phase: say back what we understood before suggesting anything.
-    if entering_understanding and move in ("reflect", "ask_clarifying") and not venting:
+    if entering_understanding and move in ("reflect", "ask_clarifying") and not venting and not elevated:
         move, question = "summarise", None
         notes.append("checking my understanding with you before suggesting anything")
 
-    elevated = safety_level == SafetyLevel.elevated
     if elevated:
         if move in advice_moves or move == "follow_up":
             move = "reflect"
@@ -211,6 +239,13 @@ def enforce_plan(
         notes.append("elevated safety concern: counsellor with a gentle check-in")
     else:
         speaker = plan.speaker
+        if (
+            phase in (Phase.checkin, Phase.exploration)
+            and speaker in (Role.mentor, Role.teacher)
+            and rt.preferred_role != speaker
+        ):
+            speaker = Role.counsellor
+            notes.append("early exploration is led by the counsellor; others join for guidance")
         if (
             rt.last_speaker is not None
             and speaker != rt.last_speaker
@@ -251,14 +286,20 @@ def state_from_plan(plan: PlannerOutput, previous: EmotionalState | None) -> Emo
         else []
     )
     prev = previous
+    trigger = plan.trigger or (prev.trigger if prev else None)
+    duration = plan.duration or (prev.duration if prev else None)
+    impact = plan.functional_impact or (prev.functional_impact if prev else None)
+    need = plan.need if plan.need != UserNeed.unknown else (prev.need if prev else UserNeed.unknown)
+    # Confidence cannot exceed the evidence: each known fact adds a little, nothing else does.
+    filled = sum(bool(x) for x in (trigger, duration, impact)) + (need != UserNeed.unknown)
     return EmotionalState(
         hypotheses=hyps,
         intensity=plan.intensity,
-        trigger=plan.trigger or (prev.trigger if prev else None),
-        duration=plan.duration or (prev.duration if prev else None),
-        functional_impact=plan.functional_impact or (prev.functional_impact if prev else None),
-        need=plan.need if plan.need != UserNeed.unknown else (prev.need if prev else UserNeed.unknown),
-        confidence=plan.confidence,
+        trigger=trigger,
+        duration=duration,
+        functional_impact=impact,
+        need=need,
+        confidence=round(min(plan.confidence, 0.2 + 0.15 * filled), 3),
         open_questions=plan.open_questions[:3],
     )
 
