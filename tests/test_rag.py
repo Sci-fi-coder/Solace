@@ -6,6 +6,7 @@ No real model downloads, no real API calls.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -260,6 +261,41 @@ def test_idempotent_rebuild(
     assert actual_count == count1, f"Expected {count1} docs in collection, got {actual_count}"
 
 
+def test_passage_upsert_is_idempotent(
+    tmp_path: Path,
+    fake_embedder: FakeEmbedder,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated passage builds preserve stable ids and collection counts."""
+    from scripts import kb_build
+
+    work_dir = tmp_path / "kb_work"
+    work_dir.mkdir()
+    page_text = (
+        "People can notice stress in the body and gently return attention to the present. "
+        "A small pause may help someone decide what would be useful next. "
+    ) * 30
+    (work_dir / "dwm_stress.json").write_text(
+        json.dumps([{"page_number": 1, "text": page_text}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(kb_build, "_KB_WORK_DIR", work_dir)
+
+    collection = get_collection(
+        get_client(tmp_path / "chroma"), COLLECTION_PASSAGES, fake_embedder
+    )
+    deny_sets = {"dwm_stress": frozenset()}
+
+    first_counts = kb_build._ingest_passages(collection, deny_sets)
+    second_counts = kb_build._ingest_passages(collection, deny_sets)
+
+    assert first_counts == second_counts
+    assert collection.count() == sum(first_counts.values())
+    assert set(collection.get(include=["metadatas"])["ids"]) == {
+        f"dwm_stress_p1_c{index}" for index in range(first_counts["dwm_stress"])
+    }
+
+
 # ── Test 5: Passage sanitisation ─────────────────────────────────────────────
 
 
@@ -322,14 +358,16 @@ def test_chunk_text_overlap() -> None:
 def test_reviewed_only_ingestion(
     tmp_path: Path, fake_embedder: FakeEmbedder
 ) -> None:
-    """Unreviewed cards must not appear in the store."""
-    # Load with reviewed_only=True (default) and reviewed_only=False
-    library_reviewed = CardLibrary.load(reviewed_only=True)
-    library_all = CardLibrary.load(reviewed_only=False)
-
-    # If all cards happen to be reviewed, we can still check counts match
-    reviewed_count = len(library_reviewed)
-    all_count = len(library_all)
+    """Reviewed-only ingestion excludes a synthetic unreviewed card."""
+    cards = CardLibrary.load(reviewed_only=False).all()
+    reviewed = cards[0].model_copy(update={"reviewed": True})
+    unreviewed = cards[1].model_copy(update={"reviewed": False})
+    library_reviewed = CardLibrary({reviewed.id: reviewed})
+    library_all = CardLibrary(
+        {reviewed.id: reviewed, unreviewed.id: unreviewed}
+    )
+    reviewed_count = 1
+    all_count = 2
 
     chroma_path = tmp_path / "chroma"
     client = get_client(chroma_path)
@@ -347,6 +385,32 @@ def test_reviewed_only_ingestion(
     # Collection counts should match
     assert col_reviewed.count() == reviewed_count
     assert col_all.count() == all_count
+
+
+def test_zero_argument_retriever_satisfies_retriever_like(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retriever() supports the engine protocol without model or database access."""
+    import app.rag.store as store
+    from app.rag.retriever import Retriever
+
+    class EmptyCollection:
+        def query(self, **kwargs: object) -> dict[str, list[list[object]]]:
+            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+    collection = EmptyCollection()
+    monkeypatch.setattr(store, "get_client", lambda path=None: object())
+    monkeypatch.setattr(
+        store, "get_collection", lambda client, name, embedder: collection
+    )
+
+    retriever = Retriever()
+    results = retriever.search_with_evidence(
+        "synthetic query", emotions=["anxiety_fear"], role="teacher", k=3
+    )
+
+    assert isinstance(results, list)
+    assert results == []
 
 
 def test_kb_builder_selects_unreviewed_cards_only_when_requested(
