@@ -240,6 +240,7 @@ class SolaceEngine:
             provider_used=provider_used,
             latency_ms=_ms(started),
             turn_id=turn_id,
+            debug_steps=[f"{x.name}: {x.summary}" for x in steps],
         )
 
     # ── Steps ─────────────────────────────────────────────────────────────────
@@ -331,12 +332,17 @@ class SolaceEngine:
         emotions: Sequence[str] = [h.label for h in state.hypotheses[:2]]
         try:
             found = self._retriever.search_with_evidence(
-                decision.retrieve_query or "", emotions=emotions, role=decision.speaker.value, k=3
+                decision.retrieve_query or "", emotions=emotions, role=decision.speaker.value, k=6
             )
         except Exception as exc:
             logger.warning("Retrieval failed (%s).", type(exc).__name__)
             found = []
+        wanted = "technique" if decision.move == "offer_technique" else "psychoeducation"
         items = [i for i in found if i.collection == "cards"]
+        right_kind = [
+            i for i in items if (c := self._library.get(i.doc_id)) is not None and c.category == wanted
+        ]
+        items = right_kind  # a technique request must not be answered with an explainer card, or vice versa
         cards = [c for c in (self._library.get(i.doc_id) for i in items) if c is not None][:2]
         items = [i for i in items if any(c.id == i.doc_id for c in cards)]
         steps.append(
@@ -478,6 +484,7 @@ class SolaceEngine:
             provider_used="fixed-template",
             latency_ms=_ms(started),
             turn_id=turn_id,
+            debug_steps=[f"{x.name}: {x.summary}" for x in steps],
         )
 
     def _commit(
@@ -510,15 +517,19 @@ class SolaceEngine:
             tag = " ".join(theme.lower().split()[:3])
             if tag and tag not in rt.themes:
                 rt.themes.append(tag)
-        if plan.profile_update.preferred_role is not None:
-            rt.preferred_role = plan.profile_update.preferred_role
+        explicit_pref = memory.explicit_role_preference(text)
+        if explicit_pref is not None:
+            rt.preferred_role = explicit_pref
         try:
             repo.append_message(session_id, user_msg, factory=self._factory)
             repo.append_message(session_id, bot_msg, factory=self._factory)
             repo.save_trace(trace, factory=self._factory)
             profile = repo.get_profile(rt.user_id, factory=self._factory)
             merged = memory.merge_profile(
-                profile, user_id=rt.user_id, display_name=None, update=plan.profile_update
+                profile,
+                user_id=rt.user_id,
+                display_name=None,
+                update=plan.profile_update.model_copy(update={"preferred_role": explicit_pref}),
             )
             repo.save_profile(merged, factory=self._factory)
         except Exception as exc:  # storage trouble must not break the conversation

@@ -188,3 +188,4 @@ class TurnOutput(BaseModel):
     provider_used: str = ""
     latency_ms: float = 0.0
     turn_id: str = ""
+    debug_steps: list[str] = Field(default_factory=list, description="e.g. 'critic: issues: ...' (for debugging).")

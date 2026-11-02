@@ -54,6 +54,8 @@ def main() -> None:
         flag = "  [degraded]" if last.degraded else ""
         print(f"\n{who}> {last.reply}\n  (phase: {last.phase.value}, move: {last.move}, "
               f"safety: {last.safety_level.value}, {last.latency_ms:.0f} ms){flag}\n")
+        if last.degraded or args.debug:
+            print("  [steps] " + " | ".join(last.debug_steps) + "\n")
 
 
 if __name__ == "__main__":
