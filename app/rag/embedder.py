@@ -6,6 +6,7 @@ Never use ChromaDB's default embedding function.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
@@ -53,20 +54,20 @@ class LocalEmbedder:
 
 
 class FakeEmbedder:
-    """Deterministic hash-based fake embedder for tests. No model downloads."""
+    """Deterministic hash-based token embedder for tests. No model downloads."""
 
     DIM = 384
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        """Return normalised pseudo-random vectors derived from SHA-256 hashes."""
+        """Return normalized feature-hash vectors with shared-token similarity."""
         result: list[list[float]] = []
         for text in texts:
-            digest = hashlib.sha256(text.encode()).digest()
-            # Build a 384-dim vector from repeating digest bytes
-            raw: list[float] = []
-            for _ in range((self.DIM + 31) // 32):
-                raw.extend([(b - 128) / 128.0 for b in digest])
-            vec = raw[: self.DIM]
+            vec = [0.0] * self.DIM
+            for token in re.findall(r"\w+", text.casefold()):
+                digest = hashlib.sha256(token.encode("utf-8")).digest()
+                index = int.from_bytes(digest[:4], "big") % self.DIM
+                sign = 1.0 if digest[4] & 1 else -1.0
+                vec[index] += sign
             norm = sum(x * x for x in vec) ** 0.5 or 1.0
             result.append([x / norm for x in vec])
         return result

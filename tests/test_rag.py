@@ -105,15 +105,11 @@ def test_fake_embedder_similar_texts_rank_higher(fake_embedder: FakeEmbedder) ->
     sim_similar = dot(a, s)
     sim_dissimilar = dot(a, d)
 
-    # FakeEmbedder is hash-based so this tests that the API works correctly.
-    # The exact ordering may vary; we assert the vectors are unit-length.
+    assert sim_similar > sim_dissimilar
+
     norms = [sum(x * x for x in v) ** 0.5 for v in vecs]
     for norm in norms:
         assert abs(norm - 1.0) < 1e-5, "FakeEmbedder vectors should be unit-length"
-
-    # Both similarities are valid floats in [-1, 1]
-    assert -1.0 <= sim_similar <= 1.0
-    assert -1.0 <= sim_dissimilar <= 1.0
 
 
 # ── Test 2: Filter fallback ───────────────────────────────────────────────────
