@@ -337,3 +337,30 @@ substance-use medication sections 114-130 and 134-136. These are 1-based PDF pag
 **Rationale:** Contact footers and medication references should not erase otherwise useful
 material. Heading-based ranges explicitly exclude clinical sections without guessing from a
 single banned keyword appearing elsewhere on a page.
+
+## 2026-11-02 — Layer 2b Chroma retrieval
+
+### D-043: Use supported metadata filters and true cosine similarity
+**Decision:** Store joined emotion and role labels as before, but resolve each requested label to
+the matching joined metadata values and filter with Chroma's `$in` operator. Combine emotion and
+role conditions with `$and`; if filters yield no above-threshold result, retry without filters.
+Convert Chroma cosine distance using `similarity = max(0, min(1, 1 - distance))`.
+**Rationale:** ChromaDB 1.1.1 rejects `$contains` for metadata fields, and silently treating that
+query error as an empty result hid the filter failure. Its cosine distance is `1 - cosine
+similarity`; dividing distance by two incorrectly gives orthogonal vectors a 0.5 similarity,
+making the 0.15–0.50 threshold sweep ineffective. The corrected mapping preserves meaningful
+threshold behavior and the engine's empty-result signal.
+
+### D-044: Make offline fake embeddings useful for ranking tests
+**Decision:** Hash normalized tokens into signed fixed-dimension buckets and normalize the vector,
+rather than hashing the complete text into a pseudo-random vector.
+**Rationale:** This remains deterministic and model-free while shared tokens contribute shared
+features, allowing tests to assert meaningful similarity ordering.
+
+### D-045: Require phone context for short numeric sequences
+**Decision:** Treat a phone-pattern match as contact information when it contains at least seven
+digits or appears near an explicit call/contact/phone label.
+**Rationale:** Chunks can join separately harmless instructional labels into short digit sequences.
+The prior broad expression flagged such a sequence as a phone number; the contextual rule removes
+that false positive while retaining detection of ordinary phone numbers and labelled short
+numbers. Emergency-number checks remain independent.

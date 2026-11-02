@@ -76,6 +76,14 @@ def test_banned_content_patterns(text: str, reason: str) -> None:
     assert reason in banned_content_reasons(text)
 
 
+def test_phone_pattern_ignores_short_unlabeled_number_sequences() -> None:
+    """Short instructional number sequences are not mistaken for contact details."""
+    assert "phone number" not in banned_content_reasons(
+        "Steps 123-456 in this example are instructional labels."
+    )
+    assert "phone number" in banned_content_reasons("Call 123-456 for more information.")
+
+
 def test_unlisted_emotion_is_rejected() -> None:
     """The imported emotion-label set remains the schema's source of truth."""
     payload = valid_card_payload()

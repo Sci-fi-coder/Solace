@@ -432,3 +432,46 @@
   was removed.
 - `google-genai` (not `google-generativeai`) — the new unified Gemini SDK.
 - MockProvider uses scripted deterministic outputs keyed by `TaskKind` to keep tests hermetic.
+
+---
+
+## Session: 2026-11-02 — Layer 2b Chroma audit and completion
+
+### Done
+- Audited the unaudited Layer 2b WIP commit and completed the local embedder, Chroma store,
+  builder, retriever, passage-safety checks, synthetic evaluation set, and offline tests.
+- Replaced the fake embedder's whole-text hashes with deterministic token feature hashing so
+  shared terms produce meaningful test ranking without model downloads.
+- Added `--include-unreviewed`; default builds include reviewed cards only. Rebuilds now delete
+  only the two target collections and surface failures instead of suppressing them.
+- Made Chroma metadata filters use supported `$in` comparisons over joined metadata values,
+  require both emotion and role filters when both are supplied, and retry unfiltered when the
+  filtered results do not meet the similarity threshold.
+- Corrected cosine similarity to `1 - distance` (clamped to [0, 1]); the threshold sweep now
+  changes retrieval and empty-result metrics.
+- Added eight first-person synthetic retrieval cases without changing or removing existing cases.
+
+### Verification
+- `python -m compileall app scripts tests`: passed.
+- `ruff check .`: passed.
+- `python -m pytest -q`: 302 passed, 1 deselected.
+- Rebuild and subsequent upsert both produced 30 card documents and 652 passage chunks:
+  DWM stress 123, mhGAP 212, NIMH stress 5, and PM+ 312. Card source references: DWM 14,
+  mhGAP 5, NIMH 3, PM+ 10.
+- `Retriever()` returned three valid card IDs for the planner-style anxiety/breathing query with
+  emotion and role filters.
+- The final passage scan found zero phone-like strings, URLs, restricted helpline/lifeline/
+  medication terms, medication/dosage/helpline patterns, or chunks in mhGAP deny ranges.
+- The evaluation file has 68 cases: 54 retrieval cases, 14 expected-empty cases, 42 first-person
+  cases, 9 Hinglish-flavoured cases, and 8 short planner-style queries. No near-verbatim card
+  title cases were found.
+- Final evaluation: Chroma hit@1 0.648, hit@3 0.778, MRR 0.713, empty precision 0.600, empty
+  recall 0.857. Keyword baseline: 0.426, 0.444, 0.435, 0.364, 0.857 respectively.
+
+### Known issues
+- At the default 0.30 threshold, Chroma's empty precision remains 0.600; the full threshold
+  sweep is recorded in the task report. Chroma hit@3 remains above the keyword baseline.
+
+### Next
+- Layer 2b audit and implementation are complete. Review retrieval quality before proceeding to
+  the next project layer.
