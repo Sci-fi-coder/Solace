@@ -271,6 +271,25 @@ def test_reviewed_only_ingestion(
     assert col_all.count() == all_count
 
 
+def test_kb_builder_selects_unreviewed_cards_only_when_requested(
+    monkeypatch: pytest.MonkeyPatch, card_library: CardLibrary
+) -> None:
+    """The build option maps to CardLibrary's reviewed-only boundary."""
+    from scripts import kb_build
+
+    reviewed_only_values: list[bool] = []
+
+    def fake_load(cls, *, reviewed_only: bool) -> CardLibrary:
+        reviewed_only_values.append(reviewed_only)
+        return card_library
+
+    monkeypatch.setattr(CardLibrary, "load", classmethod(fake_load))
+
+    assert kb_build._load_card_library() is card_library
+    assert kb_build._load_card_library(include_unreviewed=True) is card_library
+    assert reviewed_only_values == [True, False]
+
+
 # ── Test 7: Retriever satisfies RetrieverLike protocol ───────────────────────
 
 

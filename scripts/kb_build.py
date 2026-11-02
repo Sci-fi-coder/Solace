@@ -26,8 +26,6 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-import contextlib  # noqa: E402
-
 from app.pipeline.retrieval import CardLibrary  # noqa: E402
 from app.rag.embedder import LocalEmbedder  # noqa: E402
 from app.rag.sanitizer import PageText, build_deny_set, chunk_text, sanitize_page  # noqa: E402
@@ -43,6 +41,11 @@ logger = logging.getLogger(__name__)
 
 _KB_WORK_DIR = _REPO / "data" / "kb_work"
 _SOURCES_YAML = _REPO / "data" / "kb" / "sources.yaml"
+
+
+def _load_card_library(*, include_unreviewed: bool = False) -> CardLibrary:
+    """Load reviewed cards unless the caller explicitly includes unreviewed cards."""
+    return CardLibrary.load(reviewed_only=not include_unreviewed)
 
 
 def _load_deny_sets() -> dict[str, frozenset[int]]:
@@ -115,7 +118,9 @@ def _ingest_passages(
 
     for json_path in sorted(_KB_WORK_DIR.glob("*.json")):
         source_id = json_path.stem
-        denied = deny_sets.get(source_id, frozenset())
+        if source_id not in deny_sets:
+            raise ValueError(f"Source {source_id!r} is missing from data/kb/sources.yaml")
+        denied = deny_sets[source_id]
 
         raw_pages: list[dict] = json.loads(json_path.read_text(encoding="utf-8"))
         ids: list[str] = []
@@ -162,6 +167,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Wipe both collections before rebuilding (default: idempotent upsert).",
     )
+    parser.add_argument(
+        "--include-unreviewed",
+        action="store_true",
+        help="Include cards that have not been human-reviewed.",
+    )
     args = parser.parse_args(argv)
 
     logger.info("Opening ChromaDB client ...")
@@ -170,20 +180,26 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.rebuild:
         logger.info("--rebuild: deleting existing collections ...")
-        with contextlib.suppress(Exception):
-            client.delete_collection(COLLECTION_CARDS)
-        with contextlib.suppress(Exception):
-            client.delete_collection(COLLECTION_PASSAGES)
+        existing_collections = set(client.list_collections())
+        for collection_name in (COLLECTION_CARDS, COLLECTION_PASSAGES):
+            if collection_name in existing_collections:
+                client.delete_collection(collection_name)
 
     cards_col = get_collection(client, COLLECTION_CARDS, embedder)
     passages_col = get_collection(client, COLLECTION_PASSAGES, embedder)
 
     # ── Cards ────────────────────────────────────────────────────────────────
-    logger.info("Loading reviewed cards ...")
-    library = CardLibrary.load(reviewed_only=True)
+    logger.info("Loading cards ...")
+    library = _load_card_library(include_unreviewed=args.include_unreviewed)
     logger.info("Ingesting %d cards ...", len(library))
     n_cards = _ingest_cards(cards_col, library)
     print(f"cards collection: {n_cards} documents")
+    card_source_counts: dict[str, int] = defaultdict(int)
+    for card in library.all():
+        for source_id in {source.source_id for source in card.sources}:
+            card_source_counts[source_id] += 1
+    for source_id, count in sorted(card_source_counts.items()):
+        print(f"  {source_id}: {count} cards")
 
     # ── Passages ─────────────────────────────────────────────────────────────
     logger.info("Loading deny sets ...")
