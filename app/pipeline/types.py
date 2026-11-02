@@ -38,6 +38,7 @@ Move = Literal[
     "psychoeducation",  # explain what is happening, card-backed
     "summarise",  # "what I understand so far" and check it
     "close",  # wrap up the session
+    "follow_up",  # respond to a technique just offered (same card), no new technique
 ]
 
 
@@ -89,6 +90,7 @@ class PlannerOutput(BaseModel):
     clarifying_question: str | None = None
     retrieve: bool = False
     retrieve_query: str | None = None
+    wants_new_help: bool = False
     profile_update: ProfileUpdate = Field(default_factory=ProfileUpdate)
 
     @model_validator(mode="before")

@@ -18,7 +18,7 @@ class RolePolicy:
     moves: tuple[str, ...]
     avoid: tuple[str, ...]
     banned_terms: tuple[str, ...] = ()
-    max_numbered_steps: int = 6
+    max_numbered_steps: int = 3
 
 
 ROLES: dict[Role, RolePolicy] = {
