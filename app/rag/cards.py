@@ -22,6 +22,7 @@ _PHONE_RE = re.compile(
     r"(?<!\w)(?:\+\s?\d{1,3}[\s().-]*)?"
     r"(?:\(?\d{2,4}\)?[\s().-]*){1,3}\d{3,4}(?!\w)"
 )
+_PHONE_CONTEXT_RE = re.compile(r"(?i)\b(?:call|contact|mobile|phone|telephone|tel)\b")
 _EMERGENCY_NUMBER_RE = re.compile(r"(?<!\d)(?:112|911|988|999)(?!\d)")
 _URL_RE = re.compile(
     r"(?i)\b(?:https?://|www\.)\S+|"
@@ -124,7 +125,20 @@ class Card(BaseModel):
 
 def banned_content_reasons(text: str) -> list[str]:
     """Return banned-content categories detected in card text."""
-    return [label for label, pattern in _BANNED_CONTENT_PATTERNS if pattern.search(text)]
+    reasons: list[str] = []
+    for label, pattern in _BANNED_CONTENT_PATTERNS:
+        if label == "phone number":
+            for match in pattern.finditer(text):
+                digits = sum(character.isdigit() for character in match.group())
+                context_start = max(0, match.start() - 32)
+                context_end = min(len(text), match.end() + 32)
+                context = text[context_start:context_end]
+                if digits >= 7 or _PHONE_CONTEXT_RE.search(context):
+                    reasons.append(label)
+                    break
+        elif pattern.search(text):
+            reasons.append(label)
+    return reasons
 
 
 __all__ = [
