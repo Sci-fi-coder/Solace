@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
+from app.pipeline.cache import CachingGateway
 from app.pipeline.engine import SolaceEngine
 from app.pipeline.retrieval import CardLibrary, KeywordCardRetriever, RetrieverLike
 from app.privacy import install_privacy_filter
@@ -43,6 +44,9 @@ def build_engine_from_settings(
     factory = repo.make_session_factory(db)
     gateway = LLMGateway.from_settings(db)
     install_privacy_filter(gateway)
+    cache_mode = os.environ.get("SOLACE_LLM_CACHE", "auto")
+    if cache_mode != "off":
+        gateway = CachingGateway(gateway, mode=cache_mode)  # type: ignore[assignment]
     library = CardLibrary.load()
     retriever = _make_retriever(library, retriever_mode or os.environ.get("SOLACE_RETRIEVER", "auto"))
     if use_emotion is None:

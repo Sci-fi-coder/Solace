@@ -1,0 +1,10 @@
+# Synthetic demo conversation (one message per line). Lines starting with # are ignored.
+I've been really stressed about my final exams
+About two weeks. I can't sleep properly
+I just need to vent honestly, everyone expects so much from me
+I think I'd like to understand what's going on with me
+yes, that sounds about right
+ok, can you give me something practical to try?
+yes, let's try it
+thanks, that helped a bit
+I think I'm done for today, thank you

@@ -644,3 +644,80 @@ def test_follow_up_fallback_fits_a_thank_you_and_debug_steps_are_exposed(factory
     engine = make_engine(factory, gw)
     out = engine.handle_turn(start(engine), "I feel stuck")
     assert out.debug_steps and out.debug_steps[0].startswith("safety")
+
+
+# ── Record/replay cache ──────────────────────────────────────────────────────
+
+
+class _CountingGateway:
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, task, messages, *, json_schema=None, temperature=0.7, max_tokens=800, **kw):
+        self.calls += 1
+        return SimpleNamespace(parsed=reply("Recorded answer. What feels heaviest right now?"),
+                               text="", provider="live", model="m", attempts=[])
+
+
+def _msgs(text="hello"):
+    return [{"role": "user", "content": text}]
+
+
+def test_cache_records_then_replays_without_calling_the_model(tmp_path):
+    from app.pipeline.cache import CachingGateway
+
+    path = tmp_path / "c.json"
+    live = _CountingGateway()
+    rec = CachingGateway(live, path, "record")
+    first = rec.generate(TaskKind.converse, _msgs(), json_schema=ReplyOutput, temperature=0.6)
+    assert live.calls == 1 and first.parsed.reply.startswith("Recorded answer")
+    replay = CachingGateway(live, path, "replay")
+    second = replay.generate(TaskKind.converse, _msgs(), json_schema=ReplyOutput, temperature=0.6)
+    assert live.calls == 1  # no new live call
+    assert second.parsed == first.parsed and second.provider == "cache:live"
+
+
+def test_replay_miss_raises_and_auto_fills_the_cache(tmp_path):
+    from app.pipeline.cache import CachingGateway
+
+    path = tmp_path / "c.json"
+    live = _CountingGateway()
+    with pytest.raises(LookupError):
+        CachingGateway(live, path, "replay").generate(TaskKind.converse, _msgs(), json_schema=ReplyOutput)
+    auto = CachingGateway(live, path, "auto")
+    auto.generate(TaskKind.converse, _msgs("a"), json_schema=ReplyOutput)
+    auto.generate(TaskKind.converse, _msgs("a"), json_schema=ReplyOutput)
+    auto.generate(TaskKind.converse, _msgs("b"), json_schema=ReplyOutput)
+    assert live.calls == 2 and auto.hits == 1  # one repeat hit, two distinct prompts
+
+
+def test_cache_key_changes_with_the_prompt_and_off_mode_passes_through(tmp_path):
+    from app.pipeline.cache import CachingGateway
+
+    live = _CountingGateway()
+    off = CachingGateway(live, tmp_path / "c.json", "off")
+    off.generate(TaskKind.converse, _msgs("a"), json_schema=ReplyOutput)
+    off.generate(TaskKind.converse, _msgs("a"), json_schema=ReplyOutput)
+    assert live.calls == 2 and not (tmp_path / "c.json").exists()
+    with pytest.raises(ValueError):
+        CachingGateway(live, tmp_path / "x.json", "bogus")
+
+
+def test_a_replayed_conversation_works_end_to_end_with_no_live_model(factory, tmp_path):
+    from app.pipeline.cache import CachingGateway
+
+    path = tmp_path / "c.json"
+    script = lambda: ScriptedGateway(plans=[plan()], replies=[reply()])  # noqa: E731
+    recorded = SolaceEngine(CachingGateway(script(), path, "record"), factory)
+    out1 = recorded.handle_turn(start(recorded), "I've been stressed about exams")
+    replayed = SolaceEngine(CachingGateway(ScriptedGateway(), path, "replay"), factory)
+    out2 = replayed.handle_turn(start(replayed, "u7"), "I've been stressed about exams")
+    assert out2.reply == out1.reply and not out2.degraded
+    assert out2.provider_used.startswith("cache:")
+
+
+def test_failure_details_are_visible_in_debug_steps(factory):
+    gw = ScriptedGateway(plans=[RuntimeError("503 UNAVAILABLE high demand")], replies=[reply()])
+    engine = make_engine(factory, gw)
+    out = engine.handle_turn(start(engine), "I feel stuck")
+    assert any("RuntimeError" in s and "503" in s for s in out.debug_steps)

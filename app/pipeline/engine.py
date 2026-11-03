@@ -267,7 +267,7 @@ class SolaceEngine:
                 build_planner_messages(rt, text, emotion),
                 json_schema=PlannerOutput,
                 temperature=0.2,
-                max_tokens=700,
+                max_tokens=900,
             )
             plan = _parse(result, PlannerOutput)
             steps.append(
@@ -280,7 +280,13 @@ class SolaceEngine:
             return plan, result, True
         except Exception as exc:
             logger.warning("Planner failed (%s); using a safe fallback plan.", type(exc).__name__)
-            steps.append(StepRecord(name="planner", summary="failed: fallback plan", latency_ms=_ms(t0)))
+            steps.append(
+                StepRecord(
+                    name="planner",
+                    summary=f"failed ({type(exc).__name__}: {str(exc)[:140]}): fallback plan",
+                    latency_ms=_ms(t0),
+                )
+            )
             return _fallback_plan(rt), None, False
 
     def _merge_safety(
@@ -382,13 +388,19 @@ class SolaceEngine:
                     ),
                     json_schema=ReplyOutput,
                     temperature=0.6,
-                    max_tokens=500,
+                    max_tokens=600,
                 )
                 out = _parse(result, ReplyOutput)
                 provider_used = f"{getattr(result, 'provider', '?')}/{getattr(result, 'model', '?')}"
             except Exception as exc:
                 logger.warning("Reply generation failed (%s).", type(exc).__name__)
-                steps.append(StepRecord(name="reply", summary="failed", latency_ms=_ms(t0)))
+                steps.append(
+                    StepRecord(
+                        name="reply",
+                        summary=f"failed ({type(exc).__name__}: {str(exc)[:140]})",
+                        latency_ms=_ms(t0),
+                    )
+                )
                 break
             verdict, issues = check_reply(
                 out.reply,
