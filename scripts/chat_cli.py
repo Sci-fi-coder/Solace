@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 
 from app.pipeline.factory import build_engine_from_settings
 
@@ -19,9 +20,13 @@ def main() -> None:
     parser.add_argument("--name", default=None)
     parser.add_argument("--emotion", action="store_true", help="enable the GoEmotions hint (needs the [ml] extra)")
     parser.add_argument("--retriever", choices=["auto", "keyword", "chroma"], default="auto")
+    parser.add_argument("--cache", choices=["off", "auto", "record", "replay"], default=None,
+                        help="record/replay LLM answers (default: auto)")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     logging.getLogger().setLevel(logging.INFO if args.debug else logging.ERROR)
+    if args.cache:
+        os.environ["SOLACE_LLM_CACHE"] = args.cache
 
     engine = build_engine_from_settings(use_emotion=args.emotion or None, retriever_mode=args.retriever)
     info = engine.start_session(args.user, args.name)
