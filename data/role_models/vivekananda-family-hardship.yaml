@@ -17,10 +17,10 @@ sources:
   - title: "A Short Life of Swami Vivekananda"
     author: "Swami Tejasananda"
     year: "1995"
-    locator: "Chapter III, 'Transformation', section on the period after his father's death; verify printed page in source copy"
+    locator: "Chapter III, 'Transformation', printed pp. 29–30"
     url: null
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "Source passage checked; locator corrected to the supplied edition. Retain as unreviewed until the project owner approves the card."
 reviewed: false

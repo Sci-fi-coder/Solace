@@ -9,7 +9,7 @@ emotions:
   - anxiety_fear
   - shame_guilt
   - positive
-summary: "Kalam describes a transformation at DRDL in which young scientists were recruited and given meaningful roles, while experienced scientists were empowered as technology directors. He links the change to new energy and stronger technical capability."
+summary: "Kalam describes recruiting 300 young scientists at DRDL and assigning senior scientists as Technology Directors. The change gave emerging contributors meaningful roles while retaining experienced technical guidance."
 lesson: "Growth can come from giving people a real opportunity to contribute while keeping access to experienced guidance."
 framing: "An analogy about balancing autonomy with mentorship."
 avoid_when: "Avoid suggesting that inexperienced people should be left without support or training."
@@ -22,5 +22,5 @@ sources:
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "Source passage checked; summary clarified to retain the specific 300-recruit and Technology Director details. Retain as unreviewed until the project owner approves the card."
 reviewed: false

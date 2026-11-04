@@ -9,18 +9,18 @@ emotions:
   - shame_guilt
   - anxiety_fear
   - sadness
-summary: "The biography repeatedly presents strength and confidence in one's own potential as central themes in Vivekananda's message to young people. Its concluding section gathers his teachings on self-belief and inner strength."
+summary: "The supplied biography presents strength and self-reliance as important themes in Vivekananda's message. Its preface and concluding collection of teachings emphasise inner strength; this card does not claim that the source establishes every broader idea associated with fearlessness or service."
 lesson: "When self-doubt is loud, try separating the feeling of inadequacy from the evidence about what you can learn and practise next."
-framing: "A paraphrase of Vivekananda's emphasis on inner strength and self-belief."
+framing: "A limited paraphrase of the source's emphasis on inner strength and self-reliance."
 avoid_when: "Do not imply that confidence alone treats depression, anxiety, or other mental-health difficulties."
 sources:
   - title: "A Short Life of Swami Vivekananda"
     author: "Swami Tejasananda"
     year: "1995"
-    locator: "'Some Utterances', printed pp. 106–107"
+    locator: "Preface and 'Some Utterances', printed pp. 106–107"
     url: null
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "Wording narrowed to claims supported by the supplied source; retain as unreviewed until the project owner approves the card."
 reviewed: false

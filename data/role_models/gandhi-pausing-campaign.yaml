@@ -10,18 +10,18 @@ emotions:
   - sadness
   - shame_guilt
   - anxiety_fear
-summary: "After violence at Chauri Chaura in 1922, Gandhi called off the non-cooperation campaign, despite opposition from colleagues who feared the decision would waste the movement's momentum."
-lesson: "Changing course after new evidence is not always giving up; sometimes responsibility means pausing a plan that is producing harm."
+summary: "After the violence at Chauri Chaura in 1922, Gandhi cancelled the planned civil-disobedience action at Bardoli and suspended the aggressive part of the non-cooperation campaign, turning instead toward constructive work."
+lesson: "Changing course after new evidence is not always giving up; sometimes responsibility means pausing or changing a plan when its consequences become harmful."
 framing: "A historical analogy about reassessing a course of action when consequences change."
 avoid_when: "Do not equate a user's personal setback with a mass political movement or imply they alone are responsible for others' actions."
 sources:
   - title: "Gandhi: A Pictorial Biography"
     author: "B. R. Nanda"
     year: "1972"
-    locator: "Chapter 12, 'Nonviolent Non-Co-operation', printed pp. 42–44"
+    locator: "Chapter 12, 'Nonviolent Non-Co-operation', printed p. 42"
     url: null
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "Source passage checked; retain as unreviewed until the project owner approves the card."
 reviewed: false

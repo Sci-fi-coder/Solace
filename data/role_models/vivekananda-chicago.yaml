@@ -9,7 +9,7 @@ tags:
 emotions:
   - anxiety_fear
   - positive
-summary: "Vivekananda travelled to the 1893 Parliament of Religions in Chicago with limited resources and faced practical uncertainty about participation. The biography recounts how he eventually addressed the gathering and attracted attention."
+summary: "Vivekananda travelled to the 1893 Parliament of Religions in Chicago with limited resources and faced practical uncertainty about participation. The biography recounts how he eventually addressed the gathering and attracted an enthusiastic response."
 lesson: "You do not need to feel completely ready before taking a carefully considered first step; preparation and seeking help can make the step possible."
 framing: "An analogy about acting despite uncertainty, not pressure to take risks without support."
 avoid_when: "Avoid encouraging impulsive decisions or ignoring practical constraints."
@@ -17,10 +17,10 @@ sources:
   - title: "A Short Life of Swami Vivekananda"
     author: "Swami Tejasananda"
     year: "1995"
-    locator: "Chapter VI, 'In the Parliament of Religions', printed pp. 62–69"
+    locator: "Chapter VI, 'In the Parliament of Religions', printed pp. 51–55"
     url: null
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "Source passage checked; locator corrected to the supplied edition. Retain as unreviewed until the project owner approves the card."
 reviewed: false

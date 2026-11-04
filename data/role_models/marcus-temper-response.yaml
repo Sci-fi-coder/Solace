@@ -8,7 +8,7 @@ tags:
 emotions:
   - anger
   - anxiety_fear
-summary: "Marcus repeatedly reminds himself to meet other people's faults without adding unnecessary anger, and to correct or respond without becoming like the behaviour he objects to."
+summary: "Marcus advises that the best way of avenging a wrong is not to become like the person who committed it. He also recommends considering the mistaken judgement behind another person's action rather than reacting with uncontrolled anger."
 lesson: "Before replying in anger, pause and decide what outcome you want your response to achieve."
 framing: "A philosophical analogy about restraint and deliberate response."
 avoid_when: "Do not frame tolerating mistreatment as virtue; safety and boundaries come first."
@@ -16,10 +16,10 @@ sources:
   - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
     author: "Marcus Aurelius; translated by George Long"
     year: "1880"
-    locator: "Book VI, section 6; verify exact section for this paraphrase before approval"
+    locator: "Book VI, section 6"
     url: null
 verification:
   status: needs_verification
   checked_by: null
-  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+  notes: "The cited passage was checked in the supplied George Long edition; retain as unreviewed until the project owner approves the card."
 reviewed: false
