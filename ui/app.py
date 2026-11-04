@@ -5,7 +5,10 @@ from __future__ import annotations
 import html
 import os
 import re
+import sys
 from typing import Protocol
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 
@@ -241,7 +244,7 @@ def _render_chat_message(message: dict[str, object]) -> None:
                 st.markdown(
                     '<div data-testid="crisis-reply" '
                     'style="border:2px solid #c62828;border-radius:.5rem;padding:1rem;'
-                    'background:#fff5f5;white-space:pre-wrap">'
+                    'background:#fff5f5;color:#3b1111;white-space:pre-wrap">'
                     f"{content}</div>",
                     unsafe_allow_html=True,
                 )

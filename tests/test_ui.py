@@ -77,7 +77,9 @@ def test_crisis_turn_uses_red_box_and_hides_explanation_panels() -> None:
     for index in range(6):
         app = _send(app, f"Synthetic message {index + 1}.")
 
-    assert any("crisis-reply" in item.value for item in app.markdown)
+    crisis_reply = next(item.value for item in app.markdown if "crisis-reply" in item.value)
+    assert "background:#fff5f5" in crisis_reply
+    assert "color:#3b1111" in crisis_reply
     assert any("Safety state: crisis" in item.value for item in app.error)
     assert not any("Why I said this" in item.value for item in app.markdown)
     assert not any("What I understand so far" in item.value for item in app.markdown)
