@@ -6,7 +6,37 @@
 ---
 
 ## Current Branch
-`main`
+`layer-6-ui-integration`
+
+## Session: 2026-11-05 — Streamlit UI integration
+
+### Done
+- Integrated the existing Streamlit application, offline demo engine, UI tests, dependency file,
+  and launch documentation from the UI worktree without merging its branch.
+- Added a new-session control after ending a session; a new session keeps the selected user and
+  display name while clearing the previous turn state.
+- Kept normal mode wired to `build_engine_from_settings()` and demo mode isolated from provider
+  initialization. Added generic UI handling for engine initialization and turn failures.
+- Made phase, emotional state, safety state, citations, explanation, degraded mode, and trace
+  information visible. Recognizable credentials and bearer tokens are redacted in debug steps;
+  crisis turns use a fixed, visually distinct safety presentation.
+- Documented root-level launch commands and the relevant configuration variable names in
+  [UI.md](./UI.md).
+
+### Verification
+- UI tests: 11 passed.
+- Full suite with automatic dotenv loading disabled: 354 passed, 1 deselected.
+- `ruff check .` and `git diff --check`: passed.
+- Offline Streamlit server health endpoint: HTTP 200.
+
+### Known issues
+- Normal mode still requires a functioning local Solace configuration and an available provider;
+  provider/network failures are displayed as generic recoverable UI errors.
+- The offline demo is scripted and its crisis turn is only a presentation example, not a live
+  safety assessment.
+
+### Next
+- Commit the UI integration separately. Do not push or merge either milestone.
 
 ## Session: 2026-11-04 — Pipeline reliability and planner fallback
 
