@@ -8,6 +8,7 @@ from pathlib import Path
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+from app.rolemodels.models import Person, RoleModelProvenance
 from ui.app import _safe_debug_steps
 from ui.demo_engine import DemoEngine
 
@@ -129,9 +130,16 @@ def test_normal_mode_routes_messages_through_the_engine_factory(monkeypatch) -> 
         factory_calls.append(True)
         return engine
 
-    def handle_turn(session_id: str, text: str):
+    def handle_turn(
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ):
         sent_messages.append(text)
-        return original_handle_turn(session_id, text)
+        return original_handle_turn(
+            session_id, text, enable_role_models=enable_role_models
+        )
 
     monkeypatch.setattr(factory, "build_engine_from_settings", build_engine)
     monkeypatch.setattr(engine, "handle_turn", handle_turn)
@@ -164,7 +172,14 @@ def test_engine_initialization_failure_is_shown_as_a_generic_error(monkeypatch) 
 
 def test_engine_turn_errors_are_presented_without_exception_details(monkeypatch) -> None:
     """An engine failure appears as a recoverable generic UI message."""
-    def fail_turn(self: DemoEngine, session_id: str, text: str):
+    def fail_turn(
+        self: DemoEngine,
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ):
+        del enable_role_models
         raise RuntimeError("sensitive provider diagnostic")
 
     monkeypatch.setattr(DemoEngine, "handle_turn", fail_turn)
@@ -174,6 +189,86 @@ def test_engine_turn_errors_are_presented_without_exception_details(monkeypatch)
     assert not app.exception
     assert any("couldn't process that message" in item.value for item in app.error)
     assert not any("sensitive provider diagnostic" in item.value for item in app.error)
+
+
+def test_historical_toggle_passes_setting_and_shows_only_used_provenance(monkeypatch) -> None:
+    """The opt-in reaches the engine and only returned provenance renders a panel."""
+    original_handle_turn = DemoEngine.handle_turn
+    requested: list[bool] = []
+
+    def handle_turn(
+        self: DemoEngine,
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ):
+        requested.append(enable_role_models)
+        result = original_handle_turn(
+            self, session_id, text, enable_role_models=enable_role_models
+        )
+        return result.model_copy(
+            update={
+                "historical_inspiration": RoleModelProvenance(
+                    card_id="gandhi-pietermaritzburg",
+                    person=Person.gandhi,
+                    title="Responding to humiliation with purpose",
+                    source_locators=["Chapter 4, printed pp. 14–15"],
+                )
+            }
+        )
+
+    monkeypatch.setattr(DemoEngine, "handle_turn", handle_turn)
+    app = _start_session(_run_demo_app())
+    assert not any("Historical inspiration" in item.value for item in app.subheader)
+    app.checkbox(key="enable_role_models").check()
+    app.run()
+    app = _send(app, "A synthetic situation feels stressful.")
+
+    assert requested == [True]
+    assert any("Historical inspiration" in item.value for item in app.subheader)
+    assert any("Mahatma Gandhi" in item.value for item in app.markdown)
+    assert any("Chapter 4, printed pp. 14–15" in item.value for item in app.caption)
+    assert any(
+        "Shared as an analogy, not as the same situation." in item.value for item in app.caption
+    )
+
+
+def test_historical_panel_is_hidden_for_elevated_and_crisis_turns(monkeypatch) -> None:
+    """Safety states suppress the provenance panel even if an engine returns one."""
+    original_handle_turn = DemoEngine.handle_turn
+    provenance = RoleModelProvenance(
+        card_id="gandhi-pietermaritzburg",
+        person=Person.gandhi,
+        title="Responding to humiliation with purpose",
+        source_locators=["Chapter 4, printed pp. 14–15"],
+    )
+
+    def handle_turn(
+        self: DemoEngine,
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ):
+        output = original_handle_turn(
+            self, session_id, text, enable_role_models=enable_role_models
+        )
+        return output.model_copy(update={"historical_inspiration": provenance})
+
+    monkeypatch.setattr(DemoEngine, "handle_turn", handle_turn)
+    app = _start_session(_run_demo_app())
+    for index in range(5):
+        app = _send(app, f"Synthetic safety presentation turn {index + 1}.")
+
+    assert any("Elevated concern" in item.value for item in app.caption) or any(
+        "Elevated concern" in item.value for item in app.info
+    )
+    assert not any("Historical inspiration" in item.value for item in app.subheader)
+    app = _send(app, "Synthetic safety presentation turn 6.")
+
+    assert any("Safety state: crisis" in item.value for item in app.error)
+    assert not any("Historical inspiration" in item.value for item in app.subheader)
 
 
 def test_delete_all_resets_the_session_and_chat() -> None:

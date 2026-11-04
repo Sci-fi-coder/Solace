@@ -1,0 +1,26 @@
+id: "gandhi-satyagraha-strategy"
+person: gandhi
+title: "Choosing a deliberate response to injustice"
+tags:
+  - pressure
+  - responsibility
+  - purpose
+  - uncertainty
+emotions:
+  - anger
+  - anxiety_fear
+summary: "Nanda describes Gandhi's turn toward satyagraha after the Transvaal Asiatic Registration Act in 1907. Rather than treating resistance as a single outburst, the campaign developed into organised collective action."
+lesson: "When a problem feels overwhelming, identify the specific issue, the people affected, and a principled next step instead of reacting impulsively."
+framing: "A historical example of structured, values-led action."
+avoid_when: "Do not suggest confrontation or civil disobedience as personal advice; adapt only the idea of deliberate, lawful action."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapter 6, 'Satyagraha Struggle in South Africa', printed p. 21"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

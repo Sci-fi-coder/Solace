@@ -1,0 +1,26 @@
+id: "kalam-structured-reviews"
+person: kalam
+title: "Using review to learn and improve"
+tags:
+  - failure
+  - uncertainty
+  - responsibility
+  - routine
+emotions:
+  - anxiety_fear
+  - shame_guilt
+summary: "Kalam describes a multi-level review system for missile development, including design reviews, system reviews, flight-readiness reviews, post-flight analysis, and failure review by expert teams."
+lesson: "Turn a large uncertain task into checkpoints where problems can be found early and lessons can shape the next attempt."
+framing: "A practical analogy from engineering project management."
+avoid_when: "Do not encourage excessive checking that worsens perfectionism or anxiety."
+sources:
+  - title: "Address at the Foundation Day and Golden Jubilee Celebrations of AIMA"
+    author: "A.P.J. Abdul Kalam"
+    year: "2006"
+    locator: "Section C, subsection '(iii) Management system for change', printed p. 3"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

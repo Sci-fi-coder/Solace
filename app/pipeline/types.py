@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.contracts import EmotionalState, Phase, Role, SafetyLevel, UserNeed
+from app.rolemodels.models import RoleModelProvenance
 
 _LABEL_ALIASES = {
     "anxiety": "anxiety_fear", "anxious": "anxiety_fear", "fear": "anxiety_fear", "worry": "anxiety_fear",
@@ -135,6 +136,7 @@ class ReplyOutput(BaseModel):
     reply: str
     explanation: str = ""
     used_card_ids: list[str] = Field(default_factory=list)
+    used_role_model_id: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -183,6 +185,7 @@ class TurnOutput(BaseModel):
     state_summary: str = Field(default="", description="'What I understand so far' panel text.")
     explanation: str = Field(default="", description="'Why I said this' panel text.")
     citations: list[Citation] = Field(default_factory=list)
+    historical_inspiration: RoleModelProvenance | None = None
     move: str | None = None
     degraded: bool = False
     provider_used: str = ""

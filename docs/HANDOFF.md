@@ -6,7 +6,46 @@
 ---
 
 ## Current Branch
-`layer-6-ui-integration`
+`layer-7-rolemodels`
+
+## Session: 2026-11-04 — Historical role-model knowledge
+
+### Done
+- Created a separate Pydantic role-model schema, YAML library, deterministic
+  theme/emotion/person selector, and local critic without changing counselling
+  roles or the self-help card schema.
+- Integrated optional historical context after the existing safety and phase
+  guards. The feature is opt-in, reviewed-only in the normal factory, capped at
+  two actual uses per session, and records provenance only for a reply that
+  declares and passes validation for card use.
+- Added the Streamlit opt-in toggle and provenance panel. Elevated/crisis states
+  suppress context and panel display; the offline demo remains independent of
+  providers and unreviewed cards.
+- Validated the supplied YAML structure and recorded the source-locator review
+  flags in [ROLE_MODELS.md](./ROLE_MODELS.md). Corrected the local role-model
+  README to point at `data/role_models/`; raw PDFs were not modified.
+
+### Verification
+- Baseline with automatic dotenv disabled: 354 passed, 1 deselected.
+- Full suite with automatic dotenv disabled: 372 passed, 1 deselected.
+- UI-specific tests with automatic dotenv disabled: 13 passed.
+- Focused role-model/pipeline/UI tests: 27 passed.
+- `ruff check .`, `git diff --check`, and `compileall`: passed.
+- Offline YAML schema validation: 24 valid, six per supported person; all remain
+  unreviewed with `needs_verification`.
+
+### Known issues
+- The source locators and historical claims still need human comparison with the
+  supplied PDFs. See [ROLE_MODELS.md](./ROLE_MODELS.md); do not mark drafts
+  reviewed before that review.
+- Since no reviewed cards are available, the feature currently returns no
+  historical inspiration by design.
+- The deterministic critic cannot prove historical accuracy; it is a
+  conservative response check, not a replacement for source verification.
+
+### Next
+- Human-verify and approve each card against its cited source before marking it
+  reviewed. Do not commit raw PDFs or unrelated untracked files.
 
 ## Session: 2026-11-05 — Streamlit UI integration
 

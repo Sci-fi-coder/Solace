@@ -1,0 +1,26 @@
+id: "vivekananda-strength-self-belief"
+person: vivekananda
+title: "Rebuilding confidence through self-belief"
+tags:
+  - self_doubt
+  - fear
+  - purpose
+emotions:
+  - shame_guilt
+  - anxiety_fear
+  - sadness
+summary: "The biography repeatedly presents strength and confidence in one's own potential as central themes in Vivekananda's message to young people. Its concluding section gathers his teachings on self-belief and inner strength."
+lesson: "When self-doubt is loud, try separating the feeling of inadequacy from the evidence about what you can learn and practise next."
+framing: "A paraphrase of Vivekananda's emphasis on inner strength and self-belief."
+avoid_when: "Do not imply that confidence alone treats depression, anxiety, or other mental-health difficulties."
+sources:
+  - title: "A Short Life of Swami Vivekananda"
+    author: "Swami Tejasananda"
+    year: "1995"
+    locator: "'Some Utterances', printed pp. 106–107"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

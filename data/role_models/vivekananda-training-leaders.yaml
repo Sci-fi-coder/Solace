@@ -1,0 +1,25 @@
+id: "vivekananda-training-leaders"
+person: vivekananda
+title: "Allowing others room to grow"
+tags:
+  - responsibility
+  - uncertainty
+  - purpose
+emotions:
+  - anxiety_fear
+  - neutral
+summary: "Near the end of his life, Vivekananda reflected that a leader who remains constantly present can prevent trained disciples from developing independently. The biography describes his view that people need room to grow after training."
+lesson: "Supporting someone does not always mean doing everything for them; clear guidance followed by room to practise can build independence."
+framing: "An analogy about mentoring and autonomy."
+avoid_when: "Do not use to justify abandoning someone who needs active support or supervision."
+sources:
+  - title: "A Short Life of Swami Vivekananda"
+    author: "Swami Tejasananda"
+    year: "1995"
+    locator: "Chapter XIII, 'The Passing', printed p. 103"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

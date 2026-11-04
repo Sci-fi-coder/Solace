@@ -1,0 +1,25 @@
+id: "gandhi-school-truth"
+person: gandhi
+title: "Truthfulness despite insecurity"
+tags:
+  - self_doubt
+  - responsibility
+  - purpose
+emotions:
+  - shame_guilt
+  - anxiety_fear
+summary: "As a schoolboy, Gandhi was quiet and not an outstanding student, but he took pride in never lying to teachers or classmates. The biography describes how strongly he reacted when his character was questioned."
+lesson: "A difficult performance or an unremarkable result does not have to define your character; choose one value you can practise consistently."
+framing: "A small example of integrity during an ordinary, uncertain stage of life."
+avoid_when: "Avoid using this to imply that academic performance or honesty alone resolves distress."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapter 1, 'Childhood', printed pp. 6–7"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

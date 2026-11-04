@@ -1,0 +1,27 @@
+id: "gandhi-noakhali-peace"
+person: gandhi
+title: "Taking patient steps toward reconciliation"
+tags:
+  - anger
+  - grief
+  - purpose
+  - responsibility
+emotions:
+  - anger
+  - sadness
+  - anxiety_fear
+summary: "During communal violence and displacement in 1946–47, Gandhi travelled through affected areas, including Noakhali, urging restraint, mutual protection, and reconciliation. Nanda presents this as a mission of peace amid intense conflict."
+lesson: "When relationships or communities are strained, small acts that reduce harm and protect people can matter even when a complete solution is not immediately possible."
+framing: "An analogy about patient, nonviolent efforts to reduce conflict."
+avoid_when: "Avoid in situations of active violence or coercion; prioritise safety and specialist support rather than reconciliation."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapters 29 and 31, 'Communal Conflagration' and 'Mission of Peace', printed pp. 80–86"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

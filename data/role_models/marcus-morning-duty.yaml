@@ -1,0 +1,26 @@
+id: "marcus-morning-duty"
+person: marcus_aurelius
+title: "Beginning despite reluctance"
+tags:
+  - routine
+  - purpose
+  - low_mood
+emotions:
+  - sadness
+  - anxiety_fear
+  - neutral
+summary: "Marcus writes to himself about the difficulty of leaving bed and reminds himself that he is getting up to do the work proper to a human being. The passage frames action as a response to purpose rather than mood."
+lesson: "When starting feels difficult, choose one small, worthwhile action before judging the whole day."
+framing: "A Stoic reflection on action and duty; not a judgement that tiredness is laziness."
+avoid_when: "Avoid during severe exhaustion, illness, burnout, or persistent low energy; do not moralise symptoms."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book V, section 1"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

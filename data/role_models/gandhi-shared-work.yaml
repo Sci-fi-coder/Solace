@@ -1,0 +1,26 @@
+id: "gandhi-shared-work"
+person: gandhi
+title: "Building solidarity through shared work"
+tags:
+  - responsibility
+  - purpose
+  - routine
+emotions:
+  - anxiety_fear
+  - sadness
+  - neutral
+summary: "The biography describes life on Gandhi's communal farms, where residents shared practical work and adopted a simpler routine. Gandhi recalled that everyone became a labourer and took part in daily tasks."
+lesson: "A shared task or modest routine can reduce isolation and make a large challenge feel more manageable."
+framing: "An analogy about cooperation and practical participation, not a claim that routine solves every problem."
+avoid_when: "Avoid if the user is exhausted, unwell, or already carrying an unfair share of responsibilities."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapter 6, discussion of communal farm life, printed pp. 21–22"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

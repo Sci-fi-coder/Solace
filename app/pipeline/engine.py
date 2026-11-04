@@ -40,6 +40,10 @@ from app.pipeline.prompts import build_planner_messages, build_reply_messages
 from app.pipeline.retrieval import CardLibrary, RetrieverLike, citations_for
 from app.pipeline.roles import ROLES, handoff_line
 from app.pipeline.types import PlannerOutput, ReplyOutput, SessionInfo, TurnOutput
+from app.rolemodels.critic import check_role_model_reply
+from app.rolemodels.library import RoleModelLibrary
+from app.rolemodels.models import RoleModelCard, RoleModelProvenance
+from app.rolemodels.selector import requested_person, role_model_allowed, select_role_model
 from app.safety.responses import CRISIS_TEMPLATE, ELEVATED_CHECK_IN, action_for
 from app.safety.sentinel import SafetyGate
 from app.storage import repository as repo
@@ -97,6 +101,7 @@ class SolaceEngine:
         retriever: RetrieverLike | None = None,
         emotion_reader: EmotionReader | None = None,
         safety_gate: SafetyGate | None = None,
+        role_model_library: RoleModelLibrary | None = None,
     ) -> None:
         self._gateway = gateway
         self._factory = factory
@@ -104,6 +109,7 @@ class SolaceEngine:
         self._retriever = retriever
         self._emotion = emotion_reader
         self._gate = safety_gate or SafetyGate(classifier=None)
+        self._role_models = role_model_library or RoleModelLibrary({})
         self._runtimes: dict[str, SessionRuntime] = {}
 
     # ── Sessions ──────────────────────────────────────────────────────────────
@@ -151,7 +157,13 @@ class SolaceEngine:
 
     # ── One turn ──────────────────────────────────────────────────────────────
 
-    def handle_turn(self, session_id: str, user_text: str) -> TurnOutput:
+    def handle_turn(
+        self,
+        session_id: str,
+        user_text: str,
+        *,
+        enable_role_models: bool = False,
+    ) -> TurnOutput:
         """Process one user message and return the reply plus the panels' contents."""
         started = time.perf_counter()
         text = user_text.strip()[:MAX_INPUT_CHARS]
@@ -181,8 +193,39 @@ class SolaceEngine:
         if (decision.retrieve or decision.move == "follow_up") and not cards:
             decision = _listen_only(decision)
 
+        explicit_role_model_request = requested_person(text) is not None
+        role_model: RoleModelCard | None = None
+        if enable_role_models:
+            allowed = role_model_allowed(
+                safety_level=safety.level,
+                crisis_seen=bool(rt.gate_state.get("crisis_seen")),
+                phase=decision.phase,
+                move=decision.move,
+                need=state.need,
+                explicit_request=explicit_role_model_request,
+                use_turns=rt.role_model_use_turns,
+                current_turn=rt.turn_count + 1,
+            )
+            if allowed:
+                role_model = select_role_model(
+                    self._role_models,
+                    text,
+                    emotion_labels=[hypothesis.label for hypothesis in state.hypotheses[:3]],
+                )
+                summary = f"selected {role_model.id}" if role_model else "no clear match"
+            else:
+                summary = "suppressed by safety or session guardrails"
+            steps.append(StepRecord(name="role_model", summary=summary, latency_ms=0.0))
+
         reply_out, verdict, draft, provider_used, reply_ok = self._reply(
-            rt, decision, text, cards, items, safety.level == SafetyLevel.elevated, steps
+            rt,
+            decision,
+            text,
+            cards,
+            items,
+            safety.level == SafetyLevel.elevated,
+            steps,
+            role_model=role_model,
         )
         final = reply_out.reply
         if safety.level == SafetyLevel.elevated:
@@ -191,6 +234,19 @@ class SolaceEngine:
         citations = citations_for(
             [c for c in reply_out.used_card_ids if any(i.doc_id == c for i in items)], self._library
         )
+        role_model_provenance = (
+            RoleModelProvenance(
+                card_id=role_model.id,
+                person=role_model.person,
+                title=role_model.title,
+                source_locators=[source.locator for source in role_model.sources],
+            )
+            if role_model is not None
+            and safety.level == SafetyLevel.none
+            and reply_ok
+            and reply_out.used_role_model_id == role_model.id
+            else None
+        )
         handoff = (
             handoff_line(decision.speaker)
             if rt.last_speaker is not None and decision.speaker != rt.last_speaker
@@ -198,6 +254,10 @@ class SolaceEngine:
         )
         degraded = (not planner_ok) or (not reply_ok) or safety.degraded
         explanation = self._explain(decision, plan, reply_out, citations)
+        if role_model_provenance is not None:
+            explanation += (
+                f"\nHistorical inspiration: {role_model_provenance.title} was shared as an analogy."
+            )
         summary_text = render_state_summary(state)
 
         trace = TurnTrace(
@@ -223,7 +283,19 @@ class SolaceEngine:
             steps=steps,
             provider_used=provider_used,
         )
-        self._commit(rt, session_id, text, final, decision, state, plan, reply_out, handoff, trace)
+        self._commit(
+            rt,
+            session_id,
+            text,
+            final,
+            decision,
+            state,
+            plan,
+            reply_out,
+            handoff,
+            trace,
+            role_model_provenance=role_model_provenance,
+        )
         return TurnOutput(
             reply=final,
             speaker=decision.speaker,
@@ -236,6 +308,7 @@ class SolaceEngine:
             state_summary=summary_text,
             explanation=explanation,
             citations=citations,
+            historical_inspiration=role_model_provenance,
             move=decision.move,
             degraded=degraded,
             provider_used=provider_used,
@@ -371,6 +444,8 @@ class SolaceEngine:
         items: list[RetrievedItem],
         elevated: bool,
         steps: list[StepRecord],
+        *,
+        role_model: RoleModelCard | None = None,
     ) -> tuple[ReplyOutput, CriticVerdict, str | None, str, bool]:
         retrieved_ids = [i.doc_id for i in items]
         previous_bot = next((m.content for m in reversed(rt.history) if m.role == "assistant"), None)
@@ -389,6 +464,7 @@ class SolaceEngine:
                         question=decision.question,
                         user_text=text,
                         cards=cards,
+                        role_model=role_model,
                         elevated=elevated,
                         feedback=feedback,
                     ),
@@ -416,6 +492,32 @@ class SolaceEngine:
                 used_card_ids=out.used_card_ids,
                 previous_reply=previous_bot,
             )
+            historical_issues = check_role_model_reply(
+                out.reply,
+                selected_card=role_model,
+                used_card_id=out.used_role_model_id,
+            )
+            if historical_issues:
+                verdict = verdict.model_copy(
+                    update={
+                        "passed": False,
+                        "grounded": False,
+                        "issues": [*verdict.issues, *historical_issues],
+                    }
+                )
+                issues.extend(historical_issues)
+            if role_model is not None or out.used_role_model_id is not None:
+                steps.append(
+                    StepRecord(
+                        name="role_model_critic",
+                        summary=(
+                            "passed"
+                            if not historical_issues
+                            else "issues: " + "; ".join(historical_issues)[:120]
+                        ),
+                        latency_ms=_ms(t0),
+                    )
+                )
             steps.append(
                 StepRecord(
                     name="critic",
@@ -516,6 +618,8 @@ class SolaceEngine:
         reply: ReplyOutput,
         handoff: str | None,
         trace: TurnTrace,
+        *,
+        role_model_provenance: RoleModelProvenance | None = None,
     ) -> None:
         user_msg = Message(role="user", content=text)
         bot_msg = Message(role="assistant", content=final, speaker_role=decision.speaker)
@@ -523,6 +627,8 @@ class SolaceEngine:
         rt.state = state
         rt.phase = decision.phase
         rt.turn_count += 1
+        if role_model_provenance is not None:
+            rt.role_model_use_turns.append(rt.turn_count)
         if decision.move == "ask_clarifying":
             rt.questions_asked += 1
         rt.last_move = decision.move

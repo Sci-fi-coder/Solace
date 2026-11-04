@@ -1,0 +1,26 @@
+id: "kalam-long-term-capability"
+person: kalam
+title: "Building capability one stage at a time"
+tags:
+  - uncertainty
+  - purpose
+  - routine
+  - failure
+emotions:
+  - anxiety_fear
+  - shame_guilt
+summary: "The official biography describes Kalam's work across launch vehicles, guided missiles, and defence technology, including his contribution to the SLV-III project and later indigenous capability programmes. ISRO records the first SLV-3 experimental flight in August 1979 as partially successful and the July 18, 1980 launch as successful."
+lesson: "A long-term goal is often reached through successive stages; a partial result can provide information for the next iteration."
+framing: "A factual example of technical development through successive attempts."
+avoid_when: "Do not promise that persistence guarantees success or compare personal outcomes to national engineering programmes."
+sources:
+  - title: "Dr. A.P.J. Abdul Kalam official biography; ISRO SLV mission history"
+    author: "President of India website; Indian Space Research Organisation"
+    year: "official biography page updated 2026; ISRO page"
+    locator: "Official biography, printed p. 1; ISRO 'SLV' page, printed p. 1"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

@@ -1,0 +1,26 @@
+id: "vivekananda-small-steady-work"
+person: vivekananda
+title: "Respecting steady, ordinary effort"
+tags:
+  - routine
+  - purpose
+  - self_doubt
+emotions:
+  - sadness
+  - anxiety_fear
+  - neutral
+summary: "In the concluding collection of teachings, Vivekananda praises the quiet, steady fulfilment of one's duty from moment to moment, rather than greatness that depends on public attention or status."
+lesson: "A small task completed steadily can count; progress does not have to look impressive to be real."
+framing: "A paraphrase about valuing consistent effort over recognition."
+avoid_when: "Avoid using this to shame someone who is struggling with energy, illness, or executive functioning."
+sources:
+  - title: "A Short Life of Swami Vivekananda"
+    author: "Swami Tejasananda"
+    year: "1995"
+    locator: "'Some Utterances', printed pp. 112–113"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

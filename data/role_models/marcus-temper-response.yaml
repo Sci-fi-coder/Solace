@@ -1,0 +1,25 @@
+id: "marcus-temper-response"
+person: marcus_aurelius
+title: "Choosing a measured response"
+tags:
+  - anger
+  - calm
+  - responsibility
+emotions:
+  - anger
+  - anxiety_fear
+summary: "Marcus repeatedly reminds himself to meet other people's faults without adding unnecessary anger, and to correct or respond without becoming like the behaviour he objects to."
+lesson: "Before replying in anger, pause and decide what outcome you want your response to achieve."
+framing: "A philosophical analogy about restraint and deliberate response."
+avoid_when: "Do not frame tolerating mistreatment as virtue; safety and boundaries come first."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book VI, section 6; verify exact section for this paraphrase before approval"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

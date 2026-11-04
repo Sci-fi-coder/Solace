@@ -1,0 +1,25 @@
+id: "kalam-programme-ownership"
+person: kalam
+title: "Building ownership across a team"
+tags:
+  - responsibility
+  - purpose
+  - pressure
+emotions:
+  - anxiety_fear
+  - neutral
+summary: "Kalam describes how a large group of scientists and technical staff became involved in the missile programme and came to feel ownership because they had participated in shaping it. He presents shared ownership as a foundation for coordinated work."
+lesson: "When a project feels like one person's burden, clarify roles and invite the team to take meaningful ownership of specific parts."
+framing: "A leadership lesson from Kalam's account of programme management."
+avoid_when: "Do not use to excuse poor management or transfer unreasonable workload to team members."
+sources:
+  - title: "Address at the Foundation Day and Golden Jubilee Celebrations of AIMA"
+    author: "A.P.J. Abdul Kalam"
+    year: "2006"
+    locator: "Section C, 'Organizational Transformation', subsection '(i) Ownership of the programme', printed pp. 2–3"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

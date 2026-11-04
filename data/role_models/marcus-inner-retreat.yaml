@@ -1,0 +1,26 @@
+id: "marcus-inner-retreat"
+person: marcus_aurelius
+title: "Creating a pause within"
+tags:
+  - calm
+  - pressure
+  - routine
+emotions:
+  - anxiety_fear
+  - anger
+  - neutral
+summary: "Marcus reflects that people seek quiet retreats in the countryside or by the sea, yet a person can pause and return inward to a place of calm. He presents reflection as something available without travelling elsewhere."
+lesson: "A brief pause, slower breathing, or a moment of reflection may help create space before responding to pressure."
+framing: "A philosophical metaphor for pausing and regaining perspective."
+avoid_when: "Do not imply that inward reflection replaces external safety, practical change, or support."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book IV, section 3"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

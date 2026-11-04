@@ -39,8 +39,15 @@ class DemoEngine:
             greeting=greeting,
         )
 
-    def handle_turn(self, session_id: str, text: str) -> TurnOutput:
+    def handle_turn(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ) -> TurnOutput:
         """Return the next scripted turn for a demo session."""
+        del enable_role_models
         if session_id != self._session_id:
             raise ValueError("Unknown demo session.")
         if not text.strip():

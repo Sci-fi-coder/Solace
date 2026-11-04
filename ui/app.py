@@ -10,6 +10,7 @@ from typing import Protocol
 import streamlit as st
 
 from app.pipeline.types import SessionInfo, TurnOutput
+from app.rolemodels.models import RoleModelProvenance
 
 _PHASES = ("checkin", "exploration", "understanding", "guidance", "closing")
 _DELETE_NOTICE = "Your data was deleted and the session has been reset."
@@ -27,7 +28,13 @@ class SessionEngine(Protocol):
     def start_session(self, user_id: str, display_name: str | None = None) -> SessionInfo:
         """Start a session for a user."""
 
-    def handle_turn(self, session_id: str, text: str) -> TurnOutput:
+    def handle_turn(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        enable_role_models: bool = False,
+    ) -> TurnOutput:
         """Process one user message."""
 
     def end_session(self, session_id: str) -> dict[str, object]:
@@ -65,6 +72,7 @@ def _initialize_state() -> None:
     st.session_state.setdefault("session_summary", None)
     st.session_state.setdefault("notice", None)
     st.session_state.setdefault("session_display_name", "")
+    st.session_state.setdefault("enable_role_models", False)
 
 
 def _start_user_session(engine: SessionEngine, user_id: str, display_name: str) -> None:
@@ -124,6 +132,11 @@ def _render_sidebar(engine: SessionEngine) -> None:
     """Render session controls and the fixed safety and privacy notice."""
     with st.sidebar:
         st.header("Session")
+        st.checkbox(
+            "Enable historical inspirations",
+            key="enable_role_models",
+            help="Allow a reviewed historical analogy only when the session and safety rules permit it.",
+        )
         st.info(
             "Solace is an AI companion, not a therapist, and cannot help in emergencies. "
             "Use synthetic text only while testing; free-tier AI providers may log requests."
@@ -282,6 +295,24 @@ def _render_panels(turn: TurnOutput) -> None:
                     st.caption(source)
 
 
+def _render_role_model(provenance: RoleModelProvenance) -> None:
+    """Render the provenance of a historical analogy actually used in the reply."""
+    names = {
+        "gandhi": "Mahatma Gandhi",
+        "vivekananda": "Swami Vivekananda",
+        "marcus_aurelius": "Marcus Aurelius",
+        "kalam": "A.P.J. Abdul Kalam",
+    }
+    with st.container(border=True):
+        st.subheader("Historical inspiration")
+        st.write(f"Person: {names[provenance.person.value]}")
+        st.write(f"Card: {provenance.title}")
+        st.write("Source locator(s):")
+        for locator in provenance.source_locators:
+            st.caption(locator)
+        st.caption("Shared as an analogy, not as the same situation.")
+
+
 def _handle_submitted_message(engine: SessionEngine, text: str) -> None:
     """Record a user message and display either a turn or a friendly error."""
     cleaned = text.strip()
@@ -290,7 +321,11 @@ def _handle_submitted_message(engine: SessionEngine, text: str) -> None:
     st.session_state.chat_messages.append({"role": "user", "content": cleaned})
     try:
         with st.spinner("Solace is preparing a response..."):
-            turn = engine.handle_turn(st.session_state.session_id, cleaned)
+            turn = engine.handle_turn(
+                st.session_state.session_id,
+                cleaned,
+                enable_role_models=st.session_state.enable_role_models,
+            )
     except Exception:
         st.session_state.chat_messages.append(
             {"role": "error", "content": _TURN_ERROR}
@@ -352,6 +387,8 @@ def main() -> None:
             st.info("This sounds like a particularly difficult moment. We can take it slowly.")
         elif level == "crisis":
             st.error("Safety state: crisis. A fixed safety response was shown.")
+        if level == "none" and latest_turn.historical_inspiration is not None:
+            _render_role_model(latest_turn.historical_inspiration)
         _render_panels(latest_turn)
         with st.expander("Show raw trace"):
             st.write(f"Provider: {latest_turn.provider_used or 'not recorded'}")

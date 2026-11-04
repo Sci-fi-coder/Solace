@@ -1,0 +1,27 @@
+id: "gandhi-pausing-campaign"
+person: gandhi
+title: "Pausing when a method causes harm"
+tags:
+  - responsibility
+  - uncertainty
+  - failure
+  - purpose
+emotions:
+  - sadness
+  - shame_guilt
+  - anxiety_fear
+summary: "After violence at Chauri Chaura in 1922, Gandhi called off the non-cooperation campaign, despite opposition from colleagues who feared the decision would waste the movement's momentum."
+lesson: "Changing course after new evidence is not always giving up; sometimes responsibility means pausing a plan that is producing harm."
+framing: "A historical analogy about reassessing a course of action when consequences change."
+avoid_when: "Do not equate a user's personal setback with a mass political movement or imply they alone are responsible for others' actions."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapter 12, 'Nonviolent Non-Co-operation', printed pp. 42–44"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

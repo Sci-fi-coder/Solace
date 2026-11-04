@@ -1,0 +1,26 @@
+id: "vivekananda-service-others"
+person: vivekananda
+title: "Connecting purpose with helping others"
+tags:
+  - purpose
+  - responsibility
+  - low_mood
+emotions:
+  - sadness
+  - neutral
+  - positive
+summary: "The biography recounts Vivekananda urging his fellow monks to attend to the suffering of poor workers and to translate spiritual ideals into practical service. He challenged them to consider whether their learning and discipline helped people in need."
+lesson: "When it feels appropriate, one small act of useful connection can give structure and meaning to a difficult day; it should be chosen freely, not as an obligation."
+framing: "A historical example of linking purpose with service."
+avoid_when: "Do not burden a distressed user with responsibility for fixing other people's problems."
+sources:
+  - title: "A Short Life of Swami Vivekananda"
+    author: "Swami Tejasananda"
+    year: "1995"
+    locator: "Chapter XI, 'In the Company of Western and Eastern Disciples', printed pp. 100–101"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

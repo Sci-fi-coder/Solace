@@ -1,0 +1,26 @@
+id: "marcus-cooperation"
+person: marcus_aurelius
+title: "Remembering the value of cooperation"
+tags:
+  - anger
+  - responsibility
+  - purpose
+emotions:
+  - anger
+  - anxiety_fear
+  - neutral
+summary: "Marcus compares human beings to parts of a larger whole and argues that people are made for cooperation. He cautions against treating others as natural enemies when shared life requires mutual contribution."
+lesson: "When conflict arises, consider whether a response can protect your boundary while still leaving room for cooperation where it is safe."
+framing: "A Stoic reflection on social nature and mutual responsibility."
+avoid_when: "Avoid encouraging reconciliation with someone who is abusive, coercive, or unsafe."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book II, section 1; verify the cooperation wording and section locator against the supplied George Long edition"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

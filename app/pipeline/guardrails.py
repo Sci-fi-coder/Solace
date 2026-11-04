@@ -60,6 +60,7 @@ class SessionRuntime:
     preferred_role: Role | None = None
     resume_note: str | None = None
     degraded_turns: int = 0
+    role_model_use_turns: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,25 @@
+id: "kalam-ethical-leadership"
+person: kalam
+title: "Keeping purpose and ethics connected"
+tags:
+  - purpose
+  - responsibility
+  - uncertainty
+emotions:
+  - neutral
+  - anxiety_fear
+summary: "In his AIMA address, Kalam connects institutional leadership with ethical standards and describes the example of Prof. Brahm Prakash, whose collaborative leadership helped align multiple centres and scientific teams around a shared mission."
+lesson: "When deciding what to do next, consider both whether an action is effective and whether it is consistent with the values you want to uphold."
+framing: "A leadership analogy about purpose, collaboration, and ethical standards."
+avoid_when: "Avoid presenting one moral framework as universal or pressuring the user to sacrifice personal wellbeing."
+sources:
+  - title: "Address at the Foundation Day and Golden Jubilee Celebrations of AIMA"
+    author: "A.P.J. Abdul Kalam"
+    year: "2006"
+    locator: "Section E, 'Ethical Standards', printed pp. 4–5"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

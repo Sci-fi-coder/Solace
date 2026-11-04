@@ -392,3 +392,33 @@ an explicit new request. When the incoming top emotion is positive and prior sta
 alpha 0.2 for state smoothing.
 **Rationale:** Acknowledgments should not trigger repeated advice or erase the emotional picture
 that prompted the technique. Existing safety and evidence-based confidence caps remain unchanged.
+
+## 2026-11-04 — Historical role-model knowledge
+
+### D-049: Keep role-model cards separate and reviewed-only
+**Decision:** Load historical analogy cards from `data/role_models/` into a separate
+`RoleModelLibrary`. The normal factory validates all YAML and exposes only cards with
+`reviewed: true` and `verification.status: verified`; unreviewed loading is an explicit
+validation/testing option. Do not merge these cards into self-help RAG.
+**Rationale:** The drafts have not been independently checked against their PDFs. Treating them
+as active self-help content or using them to satisfy evidence-based advice retrieval would bypass
+their review status and blur historical analogy with clinical guidance.
+
+### D-050: Select analogies only behind safety and relevance guards
+**Decision:** Use deterministic regex matching for themes, emotions, and explicit person requests.
+No clear match means no card. The Safety Sentinel remains first and authoritative; historical
+context requires safety level `none`, no prior crisis, and a non-listening turn. Automatic use is
+limited to understanding/guidance. Explicit requests may bypass phase and spacing limits but not
+safety, listening/clarifying restrictions, or the hard two-use session cap.
+**Rationale:** Historical examples should remain optional, relevant, and subordinate to the
+counselling process. A network/model selector would add nondeterminism without improving safety.
+
+### D-051: Require declared and checked use before emitting provenance
+**Decision:** Pass a selected role-model card as a separate response context. Require the reply
+schema to identify the card it actually used, then run local checks for person mismatch,
+unsupported names/numbers, quotations, identity claims, analogy framing, and grounding. Attach
+turn provenance and update frequency tracking only after a passing reply declares use.
+**Rationale:** Selection alone is not evidence that the final reply used a card. Separating
+selection from use avoids false UI attribution and preserves the existing self-help citation path.
+The checks are guardrails only; human source verification remains the authority for historical
+facts.

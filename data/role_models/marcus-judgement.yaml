@@ -1,0 +1,26 @@
+id: "marcus-judgement"
+person: marcus_aurelius
+title: "Separating an event from your judgement"
+tags:
+  - pressure
+  - fear
+  - calm
+emotions:
+  - anxiety_fear
+  - anger
+  - sadness
+summary: "Marcus argues that distress about an external event is shaped by the judgement a person makes about it, and that this judgement can be examined. The passage encourages checking the interpretation before treating it as the only possible view."
+lesson: "Ask: what happened, what am I telling myself it means, and what other interpretation is also plausible?"
+framing: "A Stoic reflection that can support perspective-taking, not a claim that painful events are harmless."
+avoid_when: "Avoid implying that a person is responsible for distress caused by abuse, discrimination, trauma, or material hardship."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book VIII, section 47"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

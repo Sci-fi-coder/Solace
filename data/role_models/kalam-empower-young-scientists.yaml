@@ -1,0 +1,26 @@
+id: "kalam-empower-young-scientists"
+person: kalam
+title: "Making room for emerging contributors"
+tags:
+  - self_doubt
+  - responsibility
+  - purpose
+emotions:
+  - anxiety_fear
+  - shame_guilt
+  - positive
+summary: "Kalam describes a transformation at DRDL in which young scientists were recruited and given meaningful roles, while experienced scientists were empowered as technology directors. He links the change to new energy and stronger technical capability."
+lesson: "Growth can come from giving people a real opportunity to contribute while keeping access to experienced guidance."
+framing: "An analogy about balancing autonomy with mentorship."
+avoid_when: "Avoid suggesting that inexperienced people should be left without support or training."
+sources:
+  - title: "Address at the Foundation Day and Golden Jubilee Celebrations of AIMA"
+    author: "A.P.J. Abdul Kalam"
+    year: "2006"
+    locator: "Section C, 'Organizational Transformation', subsection '(ii) How was the work culture changed', printed p. 3"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

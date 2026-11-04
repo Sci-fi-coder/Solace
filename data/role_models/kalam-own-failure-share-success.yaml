@@ -1,0 +1,27 @@
+id: "kalam-own-failure-share-success"
+person: kalam
+title: "Owning failure and sharing success"
+tags:
+  - failure
+  - responsibility
+  - self_doubt
+  - pressure
+emotions:
+  - shame_guilt
+  - sadness
+  - anxiety_fear
+summary: "Kalam recounts the 1979 SLV-3 launch failure and the successful 1980 launch. ISRO Chairman Satish Dhawan took responsibility publicly after the failure and shared the success with the team after the later launch."
+lesson: "In a team setback, distinguish learning from blame; leaders can take responsibility for failure and recognise the people who contribute to success."
+framing: "Kalam's account of leadership by Satish Dhawan; these actions must not be attributed to Kalam."
+avoid_when: "Avoid if the user is being scapegoated or is not actually responsible for the outcome."
+sources:
+  - title: "Address at the Foundation Day and Golden Jubilee Celebrations of AIMA"
+    author: "A.P.J. Abdul Kalam"
+    year: "2006"
+    locator: "Section D, 'Success/Failure Management', printed p. 4"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

@@ -1,0 +1,27 @@
+id: "gandhi-pietermaritzburg"
+person: gandhi
+title: "Responding to humiliation with purpose"
+tags:
+  - humiliation
+  - anger
+  - purpose
+  - uncertainty
+emotions:
+  - anger
+  - shame_guilt
+  - sadness
+summary: "In 1893, Gandhi was removed from a first-class railway compartment at Pietermaritzburg despite holding a first-class ticket. Nanda describes the incident as a turning point that pushed him toward organised opposition to racial discrimination in South Africa."
+lesson: "After an unjust experience, it can help to pause, name what happened, and decide what constructive response aligns with your values."
+framing: "An analogy about turning anger after injustice into purposeful action, not a comparison of the user's circumstances."
+avoid_when: "Do not use during ongoing danger, abuse, or discrimination when immediate protection and support are needed."
+sources:
+  - title: "Gandhi: A Pictorial Biography"
+    author: "B. R. Nanda"
+    year: "1972"
+    locator: "Chapter 4, 'In the Dark Continent', printed pp. 14–15"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

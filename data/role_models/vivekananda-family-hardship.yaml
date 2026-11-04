@@ -1,0 +1,26 @@
+id: "vivekananda-family-hardship"
+person: vivekananda
+title: "Finding direction during family hardship"
+tags:
+  - hardship
+  - uncertainty
+  - self_doubt
+emotions:
+  - anxiety_fear
+  - sadness
+  - shame_guilt
+summary: "After his father Vishwanath died, Narendra Nath's family faced financial strain. The biography describes Narendra seeking work and experiencing a period of difficulty before his later life as a monk and teacher."
+lesson: "A period of instability can make the future feel closed; focus first on the next realistic step and on people or supports you can turn to."
+framing: "A historical example of uncertainty in young adulthood, not proof that hardship automatically leads to success."
+avoid_when: "Do not romanticise poverty or suggest that financial hardship is spiritually beneficial."
+sources:
+  - title: "A Short Life of Swami Vivekananda"
+    author: "Swami Tejasananda"
+    year: "1995"
+    locator: "Chapter III, 'Transformation', section on the period after his father's death; verify printed page in source copy"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

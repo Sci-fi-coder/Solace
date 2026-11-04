@@ -1,0 +1,26 @@
+id: "marcus-control-response"
+person: marcus_aurelius
+title: "Focus on the part you can choose"
+tags:
+  - uncertainty
+  - pressure
+  - responsibility
+emotions:
+  - anxiety_fear
+  - anger
+  - neutral
+summary: "Across the Meditations, Marcus repeatedly distinguishes what belongs to one's own judgement and action from events outside one's control. He urges attention toward one's own choices and conduct."
+lesson: "Separate the situation into what you can influence, what you cannot control, and one next action within your reach."
+framing: "A practical paraphrase of a recurring Stoic theme in the text."
+avoid_when: "Do not use this to minimise structural barriers or imply that people can control outcomes through attitude alone."
+sources:
+  - title: "The Thoughts of the Emperor M. Aurelius Antoninus"
+    author: "Marcus Aurelius; translated by George Long"
+    year: "1880"
+    locator: "Book II, section 1; confirm the specific paraphrased principle against the supplied George Long edition"
+    url: null
+verification:
+  status: needs_verification
+  checked_by: null
+  notes: "Drafted from the supplied source PDF; requires human spot-check before activation."
+reviewed: false

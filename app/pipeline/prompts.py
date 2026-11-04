@@ -8,6 +8,7 @@ from app.contracts import EmotionReading, Message, Role, SafetyLevel, UserNeed
 from app.pipeline.guardrails import MAX_CLARIFYING, SessionRuntime
 from app.pipeline.roles import ROLES
 from app.rag.cards import Card
+from app.rolemodels.models import RoleModelCard
 
 PLANNER_SYSTEM = """You are the planning brain of Solace, a supportive, non-clinical counselling companion. \
 You do NOT write the reply. Read the person's latest message in context and return ONE JSON object only.
@@ -137,6 +138,7 @@ def build_reply_messages(
     question: str | None,
     user_text: str,
     cards: list[Card],
+    role_model: RoleModelCard | None = None,
     elevated: bool,
     feedback: list[str] | None = None,
 ) -> list[dict[str, str]]:
@@ -157,9 +159,18 @@ def build_reply_messages(
             " The person may be struggling more than usual: be extra warm, give no advice, and do not "
             "mention suicide or self-harm. A separate message with support options follows automatically."
         )
+    if role_model is not None:
+        system += (
+            " A separate historical inspiration card may be used only as an analogy, never as clinical "
+            "advice or as the same situation. Use only facts in that card; do not introduce other people, "
+            "events, dates, numbers, or quotations. Do not use quotation marks. If it does not fit naturally, "
+            "leave it unused."
+        )
     system += (
         '\nReturn JSON only: {"reply": "...", "explanation": "one or two sentences on why you replied this '
-        'way", "used_card_ids": []}. List a card id in used_card_ids only if you used that card.'
+        'way", "used_card_ids": [], "used_role_model_id": null}. List a card id in used_card_ids only if '
+        "you used that self-help card. Set used_role_model_id to the historical card id only if your reply "
+        "actually uses it; otherwise leave it null."
     )
     brief_key = "reflect_vent" if move == "reflect" and rt.state and rt.state.need == UserNeed.vent else move
     brief = _MOVE_BRIEF[brief_key].format(q=question or "", n=policy.max_numbered_steps)
@@ -171,9 +182,20 @@ def build_reply_messages(
             f"need {rt.state.need.value}.\n"
         )
     cards_text = f"\n\n{_card_block(cards)}" if cards else ""
+    role_model_text = ""
+    if role_model is not None:
+        role_model_text = (
+            "\n\nSEPARATE OPTIONAL HISTORICAL INSPIRATION (not a self-help card):\n"
+            f"Card id: {role_model.id}\n"
+            f"Person: {role_model.person.value}\n"
+            f"Title: {role_model.title}\n"
+            f"Summary: {role_model.summary}\n"
+            f"Lesson: {role_model.lesson}\n"
+            f"Framing: {role_model.framing}"
+        )
     user = (
         f"{state_line}Recent turns:\n{_recent(rt.history)}\n\nLatest message from the person:\n{user_text}\n\n"
-        f"Your task now: {brief}{cards_text}"
+        f"Your task now: {brief}{cards_text}{role_model_text}"
     )
     last_bot = next((m.content for m in reversed(rt.history) if m.role == "assistant"), None)
     if last_bot:
