@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 import time
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -15,6 +16,8 @@ from app.llm.providers import (
     MockProvider,
     OpenAICompatProvider,
     RateLimitError,
+    TransientProviderError,
+    _classified_exception,
     extract_retry_after,
 )
 
@@ -62,6 +65,81 @@ def _provider(*responses: object) -> tuple[OpenAICompatProvider, _FakeCompletion
         chat=SimpleNamespace(completions=completions)
     )
     return provider, completions
+
+
+def test_openai_compatible_client_uses_timeout_and_disables_sdk_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gateway owns retries while the SDK receives the configured timeout."""
+    captured: dict[str, object] = {}
+
+    def create_client(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("PROVIDER_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=create_client))
+
+    OpenAICompatProvider(
+        name="groq",
+        base_url="https://example.invalid/v1",
+        api_key="synthetic-key",
+        model="synthetic-model",
+    )
+
+    assert captured == {
+        "api_key": "synthetic-key",
+        "base_url": "https://example.invalid/v1",
+        "timeout": 12.5,
+        "max_retries": 0,
+    }
+
+
+def test_gemini_client_uses_default_timeout_in_milliseconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini receives the documented 25-second default as an SDK millisecond timeout."""
+    captured: dict[str, object] = {}
+    google = ModuleType("google")
+    genai = ModuleType("google.genai")
+
+    class HttpOptions:
+        def __init__(self, *, timeout: int) -> None:
+            captured["timeout_ms"] = timeout
+
+    def create_client(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    genai.Client = create_client
+    genai.types = SimpleNamespace(HttpOptions=HttpOptions)
+    google.genai = genai
+    monkeypatch.delenv("PROVIDER_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.genai", genai)
+
+    from app.llm.providers import GeminiProvider
+
+    GeminiProvider(api_key="synthetic-key", model="synthetic-model")
+
+    assert captured["timeout_ms"] == 25_000
+    assert captured["api_key"] == "synthetic-key"
+
+
+def test_timeout_and_deadline_exceptions_are_transient() -> None:
+    """Common timeout and deadline exception types use gateway transient handling."""
+
+    class DeadlineExceededError(Exception):
+        pass
+
+    assert isinstance(
+        _classified_exception("test", TimeoutError("synthetic timeout"), None),
+        TransientProviderError,
+    )
+    assert isinstance(
+        _classified_exception("test", DeadlineExceededError("synthetic deadline"), None),
+        TransientProviderError,
+    )
 
 
 class _RetryHintError(Exception):

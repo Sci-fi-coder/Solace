@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from app.contracts import Phase, Role, SafetyLevel, TaskKind, UserNeed
+from app.contracts import Phase, RetrievedItem, Role, SafetyLevel, TaskKind, UserNeed
 from app.pipeline.critic import check_reply, fallback_reply
 from app.pipeline.engine import SolaceEngine
 from app.pipeline.guardrails import (
@@ -341,6 +342,135 @@ def test_planner_failure_degrades_gracefully(factory):
     assert out.move in ("ask_clarifying", "reflect")
 
 
+def test_planner_fallback_updates_state_and_safely_records_failure(factory):
+    """A planner exception uses heuristic state and omits the raw user message from diagnostics."""
+    user_text = "I've been stressed about final exams"
+    gw = ScriptedGateway(
+        plans=[RuntimeError(f"{user_text} {'x' * 180}")],
+        replies=[reply()],
+    )
+    engine = make_engine(factory, gw)
+    out = engine.handle_turn(start(engine), user_text)
+    out = engine.handle_turn(start(engine), user_text)
+
+    assert out.degraded
+    assert out.state is not None
+    assert out.state.hypotheses[0].label == "anxiety_fear"
+    assert out.state.trigger == "exams"
+    assert "Rule-based planning" in out.explanation
+    assert not any(user_text in step for step in out.debug_steps)
+    diagnostic = next(step for step in out.debug_steps if step.startswith("planner:"))
+    assert diagnostic.startswith("planner: failed (RuntimeError: ")
+    exception_message = diagnostic.split("RuntimeError: ", maxsplit=1)[1].rsplit(
+        "): heuristic plan", maxsplit=1
+    )[0]
+    assert len(exception_message) <= 140
+
+
+def test_nine_message_demo_completes_when_every_planner_call_fails(factory, library):
+    """The checked-in synthetic demo script completes through the rule-based planner."""
+    script = [
+        line.strip()
+        for line in Path("docs/demo_script.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    replies = [
+        reply("The pressure of final exams sounds heavy. How long has this been going on?"),
+        reply(
+            "The lack of sleep sounds hard. What would help most right now: talking it through, "
+            "understanding it, or finding something practical?"
+        ),
+        reply("That's a lot to carry with everyone expecting so much. I'm here; say more if you like."),
+        reply(
+            "Exam stress can keep your body on alert, which can make sleep harder. This is a common "
+            "response to pressure. Does that fit your experience?",
+            used_card_ids=["stress-versus-anxiety"],
+        ),
+        reply("I'm glad that feels close to your experience. We can take this at your pace."),
+        reply(
+            "One small option is to breathe out a little more slowly than you breathe in. "
+            "Would you like to try it together?",
+            used_card_ids=["slow-breathing-for-stress"],
+        ),
+        reply(
+            "Let's take it gently: notice your breath, then let the next exhale be a little slower. "
+            "How does that feel?",
+            used_card_ids=["slow-breathing-for-stress"],
+        ),
+        reply("I'm glad it helped a bit. We can leave it there and you can return to it when useful."),
+        reply(
+            "You did something meaningful by talking this through. You might keep the slower exhale "
+            "as an option, and you're welcome back anytime."
+        ),
+    ]
+    gateway = ScriptedGateway(
+        plans=[RuntimeError("synthetic planner outage") for _ in script],
+        replies=replies,
+    )
+
+    class ScriptRetriever:
+        """Return the reviewed card appropriate for each state-derived query."""
+
+        def search_with_evidence(self, query, *, emotions=None, role=None, k=3):
+            card_id = (
+                "stress-versus-anxiety"
+                if "understand" in query
+                else "slow-breathing-for-stress"
+            )
+            card = library.get(card_id)
+            assert card is not None
+            return [
+                RetrievedItem(
+                    collection="cards",
+                    doc_id=card.id,
+                    source=", ".join(source.source_id for source in card.sources),
+                    text=f"{card.title}: {card.summary}",
+                    score=1.0,
+                )
+            ]
+
+    engine = make_engine(factory, gateway, library, ScriptRetriever())
+    session_id = start(engine, "demo-user")
+    outputs = [engine.handle_turn(session_id, message) for message in script]
+    moves = [output.move for output in outputs]
+
+    assert len(outputs) == 9
+    assert all(output.degraded for output in outputs)
+    assert any(output.phase != Phase.checkin for output in outputs)
+    assert moves == [
+        "ask_clarifying",
+        "reflect",
+        "reflect",
+        "psychoeducation",
+        "reflect",
+        "offer_technique",
+        "follow_up",
+        "reflect",
+        "close",
+    ]
+    assert [output.phase for output in outputs] == [
+        Phase.checkin,
+        Phase.exploration,
+        Phase.understanding,
+        Phase.understanding,
+        Phase.understanding,
+        Phase.guidance,
+        Phase.guidance,
+        Phase.guidance,
+        Phase.closing,
+    ]
+    assert {"ask_clarifying", "psychoeducation", "offer_technique", "follow_up", "close"} <= set(
+        moves
+    )
+    assert outputs[0].speaker == Role.counsellor
+    assert outputs[-1].phase == Phase.closing
+    assert outputs[3].citations
+    assert outputs[5].citations
+    assert outputs[6].citations
+    assert outputs[-1].state is not None
+    assert outputs[-1].state.hypotheses[0].label == "anxiety_fear"
+
+
 def test_total_llm_failure_still_returns_a_safe_reply(factory):
     gw = ScriptedGateway(plans=[RuntimeError("x")], replies=[RuntimeError("y")])
     engine = make_engine(factory, gw)
@@ -576,6 +706,67 @@ def test_confidence_cannot_exceed_the_evidence():
     full = state_from_plan(plan(confidence=0.95, trigger="exams", duration="2 weeks",
                                 functional_impact="no sleep", need=UserNeed.act), None)
     assert full.confidence == pytest.approx(0.8)
+
+
+def test_positive_emotion_is_smoothed_with_a_lower_alpha():
+    """A positive model reading does not displace a prior anxiety hypothesis."""
+    first = state_from_plan(
+        plan(
+            emotions=[
+                EmotionGuess(label="anxiety_fear", probability=0.9),
+                EmotionGuess(label="sadness", probability=0.1),
+            ]
+        ),
+        None,
+    )
+    positive = plan(
+        emotions=[EmotionGuess(label="positive", probability=1.0)],
+        trigger=None,
+        duration=None,
+        functional_impact=None,
+        need=UserNeed.unknown,
+    )
+
+    state = state_from_plan(positive, first)
+
+    assert state.hypotheses[0].label == "anxiety_fear"
+    assert next(item for item in state.hypotheses if item.label == "positive").probability == 0.2
+
+
+@pytest.mark.parametrize("move", ["offer_technique", "psychoeducation"])
+def test_advice_after_follow_up_requires_an_explicit_new_request(move):
+    """A fresh advice move after follow-up needs a new request for help."""
+    runtime = SessionRuntime(
+        session_id="s",
+        user_id="u",
+        phase=Phase.guidance,
+        turn_count=6,
+        last_move="follow_up",
+    )
+    requested = plan(
+        move=move,
+        phase=Phase.guidance,
+        need=UserNeed.act,
+        confidence=0.8,
+    )
+    state = state_from_plan(requested, None)
+
+    decision = enforce_plan(
+        requested,
+        runtime,
+        safety_level=SafetyLevel.none,
+        state=state,
+    )
+    assert decision.move == "reflect"
+
+    new_help = requested.model_copy(update={"wants_new_help": True})
+    decision = enforce_plan(
+        new_help,
+        runtime,
+        safety_level=SafetyLevel.none,
+        state=state,
+    )
+    assert decision.move == move
 
 
 def test_asks_what_would_help_before_summarising_when_need_is_unknown():

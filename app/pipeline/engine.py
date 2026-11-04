@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from collections.abc import Sequence
@@ -17,7 +18,6 @@ from app.contracts import (
     EmotionalState,
     EmotionReading,
     Message,
-    Phase,
     RetrievedItem,
     Role,
     SafetyLevel,
@@ -35,6 +35,7 @@ from app.pipeline.guardrails import (
     render_state_summary,
     state_from_plan,
 )
+from app.pipeline.heuristic import heuristic_plan
 from app.pipeline.prompts import build_planner_messages, build_reply_messages
 from app.pipeline.retrieval import CardLibrary, RetrieverLike, citations_for
 from app.pipeline.roles import ROLES, handoff_line
@@ -173,7 +174,7 @@ class SolaceEngine:
             return self._finish_crisis(rt, text, turn_id, safety, steps, started, emotion=emotion)
 
         state_before = rt.state
-        state = state_from_plan(plan, state_before) if planner_ok else (state_before or _blank_state())
+        state = state_from_plan(plan, state_before)
         decision = enforce_plan(plan, rt, safety_level=safety.level, state=state)
 
         items, cards = self._retrieve(decision, state, steps, rt)
@@ -196,8 +197,8 @@ class SolaceEngine:
             else None
         )
         degraded = (not planner_ok) or (not reply_ok) or safety.degraded
-        explanation = self._explain(decision, plan, planner_ok, reply_out, citations)
-        summary_text = render_state_summary(state if planner_ok or state_before else None)
+        explanation = self._explain(decision, plan, reply_out, citations)
+        summary_text = render_state_summary(state)
 
         trace = TurnTrace(
             turn_id=turn_id,
@@ -279,15 +280,20 @@ class SolaceEngine:
             )
             return plan, result, True
         except Exception as exc:
-            logger.warning("Planner failed (%s); using a safe fallback plan.", type(exc).__name__)
+            logger.warning("Planner failed (%s); using rule-based planning.", type(exc).__name__)
+            diagnostic = str(exc)
+            if text:
+                diagnostic = re.sub(
+                    re.escape(text), "[user text]", diagnostic, flags=re.IGNORECASE
+                )
             steps.append(
                 StepRecord(
                     name="planner",
-                    summary=f"failed ({type(exc).__name__}: {str(exc)[:140]}): fallback plan",
+                    summary=f"failed ({type(exc).__name__}: {diagnostic[:140]}): heuristic plan",
                     latency_ms=_ms(t0),
                 )
             )
-            return _fallback_plan(rt), None, False
+            return heuristic_plan(rt, text, emotion), None, False
 
     def _merge_safety(
         self, gate: SafetyResult, plan: PlannerOutput, planner_ok: bool, rt: SessionRuntime
@@ -435,12 +441,11 @@ class SolaceEngine:
     def _explain(
         decision: Decision,
         plan: PlannerOutput,
-        planner_ok: bool,
         reply: ReplyOutput,
         citations: Sequence[Any],
     ) -> str:
         policy = ROLES[decision.speaker]
-        why = plan.reason if planner_ok and plan.reason else "keeping the conversation steady"
+        why = plan.reason or "keeping the conversation steady"
         lines = [
             f"{policy.name} ({decision.speaker.value}) is speaking: {why}",
             f"Approach: {policy.paradigm}.",
@@ -552,21 +557,6 @@ def _empty_update() -> Any:
     from app.pipeline.types import ProfileUpdate
 
     return ProfileUpdate()
-
-
-def _blank_state() -> EmotionalState:
-    return EmotionalState(intensity=0.5, confidence=0.2)
-
-
-def _fallback_plan(rt: SessionRuntime) -> PlannerOutput:
-    ask = rt.phase in (Phase.checkin, Phase.exploration) and rt.questions_asked < 3
-    return PlannerOutput(
-        phase=rt.phase,
-        speaker=rt.last_speaker or Role.counsellor,
-        move="ask_clarifying" if ask else "reflect",
-        confidence=rt.state.confidence if rt.state else 0.2,
-        reason="the planning step was unavailable, so a safe default was used",
-    )
 
 
 def _listen_only(decision: Decision) -> Decision:

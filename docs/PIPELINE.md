@@ -7,6 +7,8 @@ One user message = `SolaceEngine.handle_turn(session_id, text) -> TurnOutput` (a
 2. **Planner** (one structured call, `TaskKind.extract`): reads the message, updates the emotional state
    (hypotheses, trigger, duration, impact, need, confidence), judges semantic safety, and proposes
    phase / speaker / move / retrieval query. Final safety level = max(rules, planner); crisis sticks.
+   If the planner call fails, a deterministic regex-based planner updates the same state and proposes a
+   conservative turn; the rule-based SafetyGate remains authoritative and the turn is marked degraded.
 3. **Guardrails** (`guardrails.py`, deterministic): phase machine, ask-before-advise, question budget (4),
    "vent means listen", narrowing (an unclear picture turns a bare reflection into one question, never two in a row),
    summarise before advising when entering `understanding`, `follow_up` instead of stacking a second technique
@@ -24,6 +26,9 @@ One user message = `SolaceEngine.handle_turn(session_id, text) -> TurnOutput` (a
    One regeneration with feedback, then a fixed safe fallback reply.
 7. **Memory**: trace + messages persisted; profile themes/preferred role merged; `end_session()` stores a
    deterministic summary used as "Last time we spoke about ..." next session.
+
+Provider requests use `PROVIDER_TIMEOUT_SECONDS` (default 25). Gemini receives the timeout in
+milliseconds; OpenAI-compatible SDK retries are disabled so transient retries stay gateway-owned.
 
 ## TurnOutput (what the UI shows)
 `reply`, `speaker`/`speaker_name`, `handoff` (shown when the speaker changes), `phase`, `safety_level`,

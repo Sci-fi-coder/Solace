@@ -203,6 +203,10 @@ def enforce_plan(
         move = "follow_up"
         notes.append("a technique was just offered: following up on it instead of adding another")
 
+    if move in advice_moves and rt.last_move == "follow_up" and not plan.wants_new_help:
+        move = "reflect"
+        notes.append("after following up: reflecting instead of repeating advice")
+
     # Narrowing step that matters most: find out what the person wants from this conversation.
     if (
         move in ("reflect", "ask_clarifying")
@@ -271,7 +275,13 @@ def state_from_plan(plan: PlannerOutput, previous: EmotionalState | None) -> Emo
     """Merge the planner's reading into the running state (feelings are smoothed across turns)."""
     fresh = {g.label: g.probability for g in plan.emotions if g.probability > 0}
     old = {h.label: h.probability for h in previous.hypotheses} if previous else {}
-    alpha = 0.5 if old else 1.0  # a single "thanks, that helps" must not erase the picture so far
+    top_emotion = max(plan.emotions, key=lambda item: item.probability, default=None)
+    if not old:
+        alpha = 1.0
+    elif top_emotion is not None and top_emotion.label == "positive":
+        alpha = 0.2
+    else:
+        alpha = 0.5
     blended = {
         label: alpha * fresh.get(label, 0.0) + (1 - alpha) * old.get(label, 0.0)
         for label in {*fresh, *old}

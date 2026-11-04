@@ -364,3 +364,31 @@ digits or appears near an explicit call/contact/phone label.
 The prior broad expression flagged such a sequence as a phone number; the contextual rule removes
 that false positive while retaining detection of ordinary phone numbers and labelled short
 numbers. Emergency-number checks remain independent.
+
+## 2026-11-04 — Pipeline reliability
+
+### D-046: Bound provider requests and leave retries to the gateway
+**Decision:** Read `PROVIDER_TIMEOUT_SECONDS` directly from the process environment, defaulting to
+25 seconds. Configure Gemini's `HttpOptions.timeout` in milliseconds and OpenAI-compatible clients
+with the timeout in seconds and `max_retries=0`. Classify timeout and deadline failures as
+transient so the gateway retains ownership of retry and provider-fallback behavior.
+**Rationale:** SDK-internal retries can multiply turn latency and obscure gateway retry policy.
+One explicit request deadline applies consistently without changing provider/model defaults or
+usage caps.
+
+### D-047: Use a deterministic planner only after planning failure
+**Decision:** When the structured planner raises, infer coarse emotions, context, need, and a
+conservative conversational move from bounded regex patterns. Merge that plan through the existing
+`state_from_plan` and guardrail path; keep safety owned by the SafetyGate and mark the turn
+degraded.
+**Rationale:** A passive generic fallback lost state and could not reliably progress a demo
+session during a planner outage. A small rule-based plan preserves context without introducing
+another model dependency or changing normal planner behavior. The heuristic is intentionally
+coarse and English-only; it is not a clinical or safety classifier.
+
+### D-048: Prevent advice loops and damp positive-only state changes
+**Decision:** After a `follow_up`, coerce another advice move to reflection unless the plan records
+an explicit new request. When the incoming top emotion is positive and prior state exists, use
+alpha 0.2 for state smoothing.
+**Rationale:** Acknowledgments should not trigger repeated advice or erase the emotional picture
+that prompted the technique. Existing safety and evidence-based confidence caps remain unchanged.

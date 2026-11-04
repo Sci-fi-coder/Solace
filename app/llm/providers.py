@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
@@ -22,6 +23,18 @@ from typing import Any, TypedDict
 from app.contracts import TaskKind
 
 logger = logging.getLogger(__name__)
+
+
+def _provider_timeout_seconds() -> float:
+    """Read and validate the shared provider request timeout."""
+    raw_timeout = os.getenv("PROVIDER_TIMEOUT_SECONDS", "25")
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as exc:
+        raise ValueError("PROVIDER_TIMEOUT_SECONDS must be a positive number.") from exc
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("PROVIDER_TIMEOUT_SECONDS must be a positive number.")
+    return timeout
 
 
 # ── Base class ────────────────────────────────────────────────────────────────
@@ -251,8 +264,13 @@ def _classified_exception(
     if status is not None and status >= 500:
         return TransientProviderError(provider, status, message)
     exception_name = type(exc).__name__.lower()
-    if isinstance(exc, (TimeoutError, ConnectionError)) or any(
-        marker in exception_name for marker in ("timeout", "connection", "connect")
+    if (
+        isinstance(exc, (TimeoutError, ConnectionError))
+        or any(
+            marker in exception_name
+            for marker in ("timeout", "deadline", "connection", "connect")
+        )
+        or any(marker in details for marker in ("deadline_exceeded", "deadline exceeded"))
     ):
         return TransientProviderError(provider, status, message)
     return None
@@ -307,7 +325,14 @@ class GeminiProvider(BaseProvider):
         # Import here so missing package doesn't break non-Gemini paths.
         try:
             from google import genai  # type: ignore[import-untyped]
-            self._client = genai.Client(api_key=api_key)
+            from google.genai import types  # type: ignore[import-untyped]
+
+            self._client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(
+                    timeout=int(_provider_timeout_seconds() * 1000)
+                ),
+            )
         except ImportError as exc:
             raise ImportError(
                 "google-genai is not installed. Run: pip install google-genai"
@@ -406,7 +431,12 @@ class OpenAICompatProvider(BaseProvider):
         self._model = model
         try:
             from openai import OpenAI  # type: ignore[import-untyped]
-            self._client = OpenAI(api_key=api_key, base_url=base_url)
+            self._client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=_provider_timeout_seconds(),
+                max_retries=0,
+            )
         except ImportError as exc:
             raise ImportError(
                 "openai package is not installed. Run: pip install openai"

@@ -6,7 +6,49 @@
 ---
 
 ## Current Branch
-`layer-2a-cards`
+`main`
+
+## Session: 2026-11-04 — Pipeline reliability and planner fallback
+
+### Done
+- Added a shared `PROVIDER_TIMEOUT_SECONDS` environment setting (25-second default), passed it
+  into Gemini and OpenAI-compatible clients, disabled OpenAI SDK retries, and classified timeout
+  and deadline exceptions as transient for gateway-owned retries.
+- Added a deterministic planner fallback for planner exceptions. It updates emotional state,
+  preserves known context, selects conservative moves, and remains visibly degraded; the
+  SafetyGate remains authoritative.
+- Prevented new advice immediately after a follow-up unless the user explicitly asks for more
+  help. Positive-only state updates now use alpha 0.2.
+- Added offline provider, heuristic, guardrail, fallback, and nine-message demo regression tests.
+- Documented the fallback and provider timeout behavior in the pipeline guide and recorded the
+  design decisions below.
+
+### Verification
+- Baseline suite: 307 passed, 1 deselected.
+- Focused provider, heuristic, and pipeline tests: 106 passed.
+- Final full suite: 343 passed, 1 deselected. The suite was invoked with default dotenv loading
+  disabled to avoid implicit `.env` access; explicit temporary dotenv tests remain active.
+- `ruff check .`: passed.
+- The exact nine-message script completed with moves
+  `ask_clarifying -> reflect -> reflect -> psychoeducation -> reflect -> offer_technique ->`
+  `follow_up -> reflect -> close`; phases were
+  `checkin -> exploration -> understanding -> understanding -> understanding ->`
+  `guidance -> guidance -> guidance -> closing`.
+  Every turn was degraded; the expected advice turns carried citations; the final top emotion was
+  `anxiety_fear`.
+
+### Known issues
+- The planner fallback uses a small English regex vocabulary. It is coarse, can miss paraphrases,
+  and must not be used as a safety classifier; crisis and elevated handling remain with the
+  existing SafetyGate.
+- Advice and psychoeducation still require a matching reviewed knowledge card; if retrieval has
+  no usable card, the existing engine stays in listening mode.
+- I did not directly inspect or print `.env`. The baseline pytest process imported the app's
+  default settings singleton, which is configured to load `.env`; it may have implicitly loaded
+  the file. Later validation disabled automatic dotenv loading.
+
+### Next
+- Review the uncommitted reliability changes. No commit, merge, or push was made.
 
 ---
 
