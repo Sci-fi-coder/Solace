@@ -9,7 +9,7 @@ from app.pipeline.cache import CachingGateway
 from app.pipeline.engine import SolaceEngine
 from app.pipeline.retrieval import CardLibrary, KeywordCardRetriever, RetrieverLike
 from app.privacy import install_privacy_filter
-from app.rolemodels.library import RoleModelLibrary
+from app.rolemodels.retriever import RoleModelRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def build_engine_from_settings(
 
         emotion = EmotionRecognizer()
     gate = SafetyGate(classifier=GatewaySafetyClassifier(gateway) if separate_safety_call else None)
-    role_model_library = RoleModelLibrary.load()
+    role_model_retriever = RoleModelRetriever()
     return SolaceEngine(
         gateway,
         factory,
@@ -66,5 +66,5 @@ def build_engine_from_settings(
         retriever=retriever,
         emotion_reader=emotion,
         safety_gate=gate,
-        role_model_library=role_model_library,
+        role_model_retriever=role_model_retriever,
     )

@@ -422,3 +422,106 @@ turn provenance and update frequency tracking only after a passing reply declare
 selection from use avoids false UI attribution and preserves the existing self-help citation path.
 The checks are guardrails only; human source verification remains the authority for historical
 facts.
+
+## 2026-11-05 — Explicit historical role-model requests
+
+### D-052: Require explicit historical inspiration while keeping automatic selection optional
+**Decision:** Carry the existing explicit-person detection result into reply prompting. When a
+card is selected for an explicit request, instruct the model to use it as a clearly framed analogy
+and require the critic path to reject a draft that omits its use; when selection is automatic,
+inspiration remains optional. Keep safety suppression, reviewed-card availability, factual checks,
+and safe fallback behavior authoritative.
+**Rationale:** Selection alone does not ensure the user's direct request is answered. Separate
+explicit and automatic instructions improve responsiveness without changing selection logic or
+allowing a rejected historical draft to bypass the existing critic.
+
+### D-053: Keep explicit historical analogies independent of self-help retrieval
+**Decision:** When self-help retrieval returns no cards, keep the advice move's listening fallback
+for reply validation, but evaluate an explicit historical request using the move that passed the
+planner guardrails before the empty-retrieval fallback. The selected historical card may then be
+shared reflectively as an analogy; it does not count as a self-help card. Automatic selection
+continues to use the final move.
+**Rationale:** Historical cards and self-help cards are separate sources. An unrelated empty
+self-help result should not block an explicitly requested historical analogy, while the reflective
+fallback, safety/venting/clarification/follow-up restrictions, phase rules, and hard use cap remain
+authoritative.
+
+### D-054: Allow only observed ordinary sentence openings in historical-name validation
+**Decision:** Treat `Feeling`, `Just`, and `Does` as ordinary sentence openings only when they are
+the first capitalized word in a sentence. Keep the existing selected-card name allowances and
+reject other unsupported capitalized names as before.
+**Rationale:** The Marcus regression draft used these words as sentence openers; the name checker
+mistook them for unsupported people or places. Restricting the exceptions to sentence position
+avoids weakening checks for unsupported names elsewhere.
+
+### D-055: Report exact unsupported names without a sentence-opener allowlist
+**Decision:** Exclude only the actual first word of each sentence from capitalization-only name
+detection. Keep checking capitalized words elsewhere, and separately detect unsupported names
+used in named-entity claims. Recognize selected-person variants and capitalized terms in the
+selected card, and split sentences without treating dotted initials as sentence endings. Include
+the exact rejected tokens in critic diagnostics, retry instructions, and trace summaries.
+**Rationale:** A word allowlist can only fix observed sentence openings and grows unpredictably;
+the false positives `Feeling`, `Just`, and `Does` were ordinary prose, not names. Position-aware
+handling permits normal sentence openings while preserving checks on unsupported names such as
+`Churchill`. The trace exposes concise diagnostics, not generated reply content.
+
+### D-056: Allow explicit role-model context during a clarifying turn
+**Decision:** Let an explicit supported-person request bypass the historical-context move filter
+when the guarded counselling move is `ask_clarifying`. Do not bypass safety level, sticky crisis,
+venting need, other listening moves, or the two-use session cap. Keep automatic selections subject
+to the existing phase, move, and spacing rules.
+**Rationale:** In early phases, `enforce_plan()` may correctly convert advice to a clarifying
+question. The historical request can be answered in the same response without replacing that
+question or forcing advice. The explicit-request exception therefore applies to this one
+non-venting move only; genuine listening and safety restrictions remain authoritative.
+
+### D-057: Require a user-facing relation in historical analogy framing
+**Decision:** A historical analogy passes framing validation only when the analogy wording is
+connected to the person's situation, concern, or an applicable action. A bare mention of an
+analogy, parallel, comparison, or historical relevance is insufficient.
+**Rationale:** Keyword-only matching accepted detached historical mentions while rejecting some
+natural connected formulations. Requiring a concise textual bridge makes the criterion clearer
+without changing factual, name, quotation, provenance, or safety checks.
+
+### D-058: Keep historical-card hybrid relevance separate and abstaining
+**Decision:** Add a standalone role-model retriever using the existing `LocalEmbedder`, inverse
+document-frequency-weighted tag overlap, and emotion/state context. Load with
+`include_unreviewed=True` while preserving each card's verification and source metadata. Start
+with tunable 0.55/0.25/0.20 weights and a 0.50 minimum score; allow an optional top-match margin.
+When the optional embedding package or local model weights are unavailable, return an explicit
+no-match reason rather than substituting fake semantic scores.
+**Rationale:** Historical analogies need their own relevance policy, separate from counselling
+RAG, and the closest card is not necessarily relevant. Unreviewed cards remain retrievable for
+this standalone search step but retain their original unverified status; later eligibility and
+safety policy still governs use. The initial weights and threshold are experimental and have not
+been validated.
+
+### D-059: Separate historical matching from response eligibility
+**Decision:** Run the all-card hybrid retriever on each non-crisis turn after planning and state
+update, independently of counselling RAG. Record its candidate separately, then apply existing
+safety, listening, phase, session-cap, and spacing rules before passing historical evidence to
+generation. Keep historical evidence and provenance separate from counselling cards and citations.
+**Rationale:** A relevant historical card may be found even when counselling retrieval returns no
+cards, but relevance alone does not make an analogy appropriate. The production factory must use
+the retriever that loads both reviewed and unreviewed cards. Unreviewed status, verification state,
+and source locators are preserved; generation is instructed not to present their details as
+verified, and the critic rejects asserted historical facts from unreviewed cards. The prose
+`avoid_when` field is surfaced without pretending it can be reliably parsed as structured policy.
+
+### D-060: Calibrate hybrid retrieval against a small offline evaluation set
+**Decision:** Use semantic/theme/context weights of 0.90/0.05/0.05 and a 0.45 minimum relevance
+score for historical retrieval; leave the optional top-match margin disabled. Keep a deterministic
+52-case synthetic dataset and evaluator that uses the cached `all-MiniLM-L6-v2` model only in
+offline mode.
+**Rationale:** On the evaluation set, the previous 0.55/0.25/0.20 weights and 0.50 threshold
+returned a correct top match for 1/34 relevant queries. The selected candidate returned correct
+top matches for 9/34, retained all 34 targets in the top three, and abstained for all 18
+unrelated, ambiguous, or explicitly irrelevant queries. A higher semantic weight improved
+discrimination relative to sparse theme/context matches; lowering the threshold from 0.50
+recovers otherwise-abstained relevant candidates. Margin candidates reduced relevant-query hits
+without improving the negative set.
+**Limitations:** The small synthetic set is not a semantic quality guarantee. Of 11 returned
+matches for relevant queries, 9 matched the expected card (81.8% conditional precision); only
+11/34 relevant queries passed the threshold. Expand with independently authored messages before
+further calibration. The evaluation does not change card content, verification status, or
+pipeline/safety eligibility.

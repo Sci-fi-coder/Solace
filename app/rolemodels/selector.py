@@ -108,13 +108,16 @@ def role_model_allowed(
     """Apply safety, listening, phase, and per-session frequency restrictions."""
     if safety_level != SafetyLevel.none or crisis_seen:
         return False
-    if need == UserNeed.vent or move in {
+    if need == UserNeed.vent:
+        return False
+    if move in {
         "reflect",
-        "ask_clarifying",
         "summarise",
         "follow_up",
         "close",
     }:
+        return False
+    if move == "ask_clarifying" and not explicit_request:
         return False
     if not explicit_request and phase not in (Phase.understanding, Phase.guidance):
         return False

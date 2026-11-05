@@ -23,7 +23,26 @@ _IDENTITY_CLAIM = re.compile(
     r"(?i)\b(?:the same situation|identical situation|exactly like|went through the same|"
     r"the same thing happened to)\b"
 )
-_ANALOGY_FRAME = re.compile(r"(?i)\b(?:analogy|parallel|reminds? me of|resonates?)\b")
+_ANALOGY_FRAME = re.compile(
+    r"(?i)\b(?:"
+    r"(?:analogy|parallel|comparison)\b[^.!?]{0,80}\b(?:for|to|with)\b[^.!?]{0,60}"
+    r"(?:your\b|you\b|this\b|that\b|what\b|the\b[^.!?]{0,30}\b"
+    r"(?:situation|experience|concern|conflict|challenge|team|boundary|support|need)\b|"
+    r"[a-z]+ing\b[^.!?]{0,50}\b"
+    r"(?:you|your|this|that|someone|people|situation|experience|concern|conflict|"
+    r"challenge|team|boundary|support|need)\b)"
+    r"|(?:your\b|you\b|what\b|the\b[^.!?]{0,30}\b"
+    r"(?:situation|experience|concern|conflict|challenge|team|boundary|support|need)\b)"
+    r"[^.!?]{0,60}\b(?:analogy|parallel|comparison)\b"
+    r"|as an (?:analogy|parallel|comparison)\b[^.!?]{0,40}\b"
+    r"(?:you\b|your\b|what\b|(?:this|that)\b[^.!?]{0,50}\b"
+    r"(?:you|your|what|situation|experience|concern|conflict|challenge|team|boundary|"
+    r"support|need)\b)"
+    r"|(?:compared\s+(?:to|with)|reminds?\s+me\s+of|resonates?\s+with)\s+"
+    r"(?:your\b|you\b|this\b|that\b|what\b|the\b[^.!?]{0,30}\b"
+    r"(?:situation|experience|concern|conflict|challenge|team|boundary|support|need)\b)"
+    r")"
+)
 _FACTUAL_CLAIM = re.compile(
     r"(?i)\b(?:was|were|did|led|wrote|said|founded|fought|won|served|worked|lived|"
     r"travelled|traveled|became|created|invented|studied|published|died|born|met|"
@@ -35,40 +54,34 @@ _NAMED_PERSON_CLAIM = re.compile(
     r"imprisoned|removed|arrived|launched|held|organized|organised)\b"
 )
 _CAPITALIZED_WORD = re.compile(r"\b[A-Z][a-z]{2,}\b")
-_COMMON_SENTENCE_STARTS = frozenset(
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[!?])\s+|(?<=[a-z0-9])\.\s+")
+_SENTENCE_INITIAL_WORD = re.compile(r"^\s*[\"'“‘([{]*\s*([A-Za-z][A-Za-z'-]*)")
+_GRAMMATICAL_SENTENCE_STARTS = frozenset(
     {
-        "A",
-        "An",
-        "And",
-        "As",
-        "At",
-        "But",
-        "For",
-        "From",
-        "He",
-        "Her",
-        "Here",
-        "I",
-        "If",
-        "In",
-        "It",
-        "Let",
-        "Maybe",
-        "One",
-        "Perhaps",
-        "She",
-        "Solace",
-        "Sometimes",
-        "That",
-        "The",
-        "There",
-        "They",
-        "This",
-        "We",
-        "What",
-        "When",
-        "While",
-        "You",
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "but",
+        "he",
+        "her",
+        "i",
+        "if",
+        "in",
+        "it",
+        "she",
+        "so",
+        "that",
+        "the",
+        "there",
+        "they",
+        "this",
+        "we",
+        "what",
+        "when",
+        "while",
+        "you",
     }
 )
 _WORD_RE = re.compile(r"[a-z]{4,}")
@@ -102,16 +115,27 @@ _STOP_WORDS = frozenset(
         "your",
     }
 )
+_UNVERIFIED_STATUS = re.compile(r"(?i)\b(?:unverified|unreviewed)\b")
 
 
 def _historical_sentences(reply: str) -> list[str]:
     """Return sentences that name any supported historical person."""
-    sentences = re.split(r"(?<=[.!?])\s+", reply)
+    sentences = _SENTENCE_BOUNDARY.split(reply)
     return [
         sentence
         for sentence in sentences
         if any(pattern.search(sentence) for pattern in _PERSON_PATTERNS.values())
     ]
+
+
+def has_historical_reference(reply: str) -> bool:
+    """Return whether a reply names a supported figure or makes a named-person claim."""
+    if _historical_sentences(reply):
+        return True
+    return any(
+        _NAMED_PERSON_CLAIM.search(sentence)
+        for sentence in _SENTENCE_BOUNDARY.split(reply)
+    )
 
 
 def _supported_terms(card: RoleModelCard) -> set[str]:
@@ -125,8 +149,17 @@ def _supported_numbers(card: RoleModelCard) -> set[str]:
     return set(_DIGIT_NUMBER.findall(source))
 
 
-def _unsupported_capitalized_names(reply: str, card: RoleModelCard) -> bool:
-    """Detect likely unprovided proper names while allowing card-mentioned places."""
+def _is_grammatical_sentence_start(sentence: str, word_start: int) -> bool:
+    initial = _SENTENCE_INITIAL_WORD.match(sentence)
+    return (
+        initial is not None
+        and initial.start(1) == word_start
+        and initial.group(1).lower() in _GRAMMATICAL_SENTENCE_STARTS
+    )
+
+
+def _unsupported_capitalized_names(reply: str, card: RoleModelCard) -> list[str]:
+    """Return unsupported capitalized tokens, excluding ordinary sentence openings."""
     narrative = " ".join((card.title, card.summary, card.lesson, card.framing))
     allowed = set(_CAPITALIZED_WORD.findall(narrative))
     allowed.update(
@@ -137,17 +170,27 @@ def _unsupported_capitalized_names(reply: str, card: RoleModelCard) -> bool:
             Person.kalam: {"A", "P", "J", "Abdul", "Kalam"},
         }[card.person]
     )
-    for sentence in re.split(r"(?<=[.!?])\s+", reply):
-        for index, match in enumerate(_CAPITALIZED_WORD.finditer(sentence)):
+    unsupported: list[str] = []
+    for sentence in _SENTENCE_BOUNDARY.split(reply):
+        initial = _SENTENCE_INITIAL_WORD.match(sentence)
+        for match in _CAPITALIZED_WORD.finditer(sentence):
             word = match.group()
             if word in allowed or any(
                 pattern.fullmatch(word) for pattern in _PERSON_PATTERNS.values()
             ):
                 continue
-            if index == 0 and word in _COMMON_SENTENCE_STARTS:
+            if initial is not None and match.start() == initial.start(1):
                 continue
-            return True
-    return False
+            unsupported.append(word)
+        for match in _NAMED_PERSON_CLAIM.finditer(sentence):
+            name = match.group(1)
+            if _is_grammatical_sentence_start(sentence, match.start(1)):
+                continue
+            if name not in allowed and not any(
+                pattern.fullmatch(name) for pattern in _PERSON_PATTERNS.values()
+            ):
+                unsupported.append(name)
+    return list(dict.fromkeys(unsupported))
 
 
 def check_role_model_reply(
@@ -168,15 +211,22 @@ def check_role_model_reply(
     if not sentences:
         if used_card_id is not None:
             issues.append("declares historical-card use without mentioning its person")
-        if selected_card is None:
-            for match in _NAMED_PERSON_CLAIM.finditer(reply):
-                if match.group(1) not in _COMMON_SENTENCE_STARTS:
-                    issues.append("introduces a named historical figure without selected context")
-                    break
+        if selected_card is None and any(
+            not _is_grammatical_sentence_start(sentence, match.start(1))
+            for sentence in _SENTENCE_BOUNDARY.split(reply)
+            for match in _NAMED_PERSON_CLAIM.finditer(sentence)
+        ):
+            issues.append("introduces a named historical figure without selected context")
         return issues
     if selected_card is None:
         issues.append("mentions a historical person without selected historical context")
         return issues
+
+    if not selected_card.reviewed:
+        if not _UNVERIFIED_STATUS.search(" ".join(sentences)):
+            issues.append("unreviewed historical context must be identified as unverified")
+        if any(_FACTUAL_CLAIM.search(sentence) for sentence in sentences):
+            issues.append("unreviewed historical details must not be presented as established facts")
 
     for person, pattern in _PERSON_PATTERNS.items():
         if person != selected_card.person and pattern.search(reply):
@@ -184,8 +234,9 @@ def check_role_model_reply(
             break
     if _QUOTED_TEXT.search(reply):
         issues.append("uses quotation marks in historical context")
-    if _unsupported_capitalized_names(reply, selected_card):
-        issues.append("introduces a named person or place outside the selected card")
+    unsupported_names = _unsupported_capitalized_names(reply, selected_card)
+    if unsupported_names:
+        issues.append(f"unsupported capitalized token(s): {', '.join(unsupported_names)}")
     if _IDENTITY_CLAIM.search(reply):
         issues.append("claims the user's situation is the same as the historical person's")
 

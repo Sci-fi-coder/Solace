@@ -18,6 +18,14 @@ class Person(StrEnum):
     kalam = "kalam"
 
 
+PERSON_DISPLAY_NAMES: dict[Person, str] = {
+    Person.gandhi: "Mahatma Gandhi",
+    Person.vivekananda: "Swami Vivekananda",
+    Person.marcus_aurelius: "Marcus Aurelius",
+    Person.kalam: "A.P.J. Abdul Kalam",
+}
+
+
 VerificationStatus = Literal["needs_verification", "verified"]
 
 SUPPORTED_TAGS = frozenset(

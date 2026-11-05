@@ -21,6 +21,7 @@ from app.pipeline.guardrails import (
 from app.pipeline.retrieval import CardLibrary, KeywordCardRetriever
 from app.pipeline.types import EmotionGuess, PlannerOutput, ProfileUpdate, ReplyOutput
 from app.privacy import install_privacy_filter, scrub_pii
+from app.rolemodels.retriever import RoleModelRetrievalResult
 from app.safety.responses import CRISIS_TEMPLATE, ELEVATED_CHECK_IN
 from app.storage import repository as repo
 
@@ -46,6 +47,20 @@ class ScriptedGateway:
         if isinstance(item, Exception):
             raise item
         return SimpleNamespace(parsed=item, text="", provider="fake", model="m", attempts=[])
+
+
+class NoHistoricalMatchRetriever:
+    """Keep general pipeline tests offline without loading embedding model weights."""
+
+    def retrieve(
+        self,
+        current_user_message,
+        *,
+        recent_user_messages=(),
+        conversation_state=None,
+    ):
+        """Return a deterministic no-match result for unrelated pipeline behavior."""
+        return RoleModelRetrievalResult(None, (), "below_threshold", None)
 
 
 def plan(**kw) -> PlannerOutput:
@@ -81,7 +96,13 @@ def library():
 
 
 def make_engine(factory, gateway, library=None, retriever=None):
-    return SolaceEngine(gateway, factory, library=library, retriever=retriever)
+    return SolaceEngine(
+        gateway,
+        factory,
+        library=library,
+        retriever=retriever,
+        role_model_retriever=NoHistoricalMatchRetriever(),
+    )
 
 
 def start(engine, user="u1"):
@@ -608,12 +629,16 @@ def test_engine_works_through_the_real_gateway_class(factory):
     reply_json = json.dumps({"reply": "That sounds so heavy, and it makes sense you feel worn down. What has been weighing on you most?",
                              "explanation": "Validated the feeling.", "used_card_ids": []})
     gw = LLMGateway.from_mock(fixed_output=plan_json)
-    engine = SolaceEngine(gw, factory)
+    engine = SolaceEngine(
+        gw, factory, role_model_retriever=NoHistoricalMatchRetriever()
+    )
     sid = start(engine)
     out = engine.handle_turn(sid, "I just feel so low")  # reply call also returns plan JSON -> falls back safely
     assert out.degraded and out.reply
     gw2 = LLMGateway.from_mock(fixed_output=reply_json)
-    engine2 = SolaceEngine(gw2, factory)
+    engine2 = SolaceEngine(
+        gw2, factory, role_model_retriever=NoHistoricalMatchRetriever()
+    )
     out2 = engine2.handle_turn(start(engine2, "u9"), "I just feel so low")
     assert out2.degraded  # planner JSON missing -> safe plan, but the reply parsed through the real gateway
     assert "weighing on you most" in out2.reply
@@ -899,9 +924,17 @@ def test_a_replayed_conversation_works_end_to_end_with_no_live_model(factory, tm
 
     path = tmp_path / "c.json"
     script = lambda: ScriptedGateway(plans=[plan()], replies=[reply()])  # noqa: E731
-    recorded = SolaceEngine(CachingGateway(script(), path, "record"), factory)
+    recorded = SolaceEngine(
+        CachingGateway(script(), path, "record"),
+        factory,
+        role_model_retriever=NoHistoricalMatchRetriever(),
+    )
     out1 = recorded.handle_turn(start(recorded), "I've been stressed about exams")
-    replayed = SolaceEngine(CachingGateway(ScriptedGateway(), path, "replay"), factory)
+    replayed = SolaceEngine(
+        CachingGateway(ScriptedGateway(), path, "replay"),
+        factory,
+        role_model_retriever=NoHistoricalMatchRetriever(),
+    )
     out2 = replayed.handle_turn(start(replayed, "u7"), "I've been stressed about exams")
     assert out2.reply == out1.reply and not out2.degraded
     assert out2.provider_used.startswith("cache:")

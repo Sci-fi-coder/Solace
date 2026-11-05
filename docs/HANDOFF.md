@@ -5,8 +5,217 @@
 
 ---
 
+## Session: 2026-11-05 — Historical retrieval evaluation and calibration (Step 3)
+
+### Done
+- Added a deterministic 52-case synthetic dataset covering every one of the 24 cards,
+  explicit requests for all four people, six similar-theme distinctions, unrelated requests,
+  ambiguous messages, and explicit but irrelevant requests. No card content or review state
+  was changed.
+- Added `scripts/eval_rolemodels.py` to evaluate actual local embeddings offline, report
+  Precision@1, Recall@3, no-match accuracy, false-positive rate, per-card results, and
+  reviewed/unreviewed coverage, and compare a bounded calibration grid without repeating
+  embedding calls.
+- Evaluated cached `sentence-transformers/all-MiniLM-L6-v2` weights with offline mode enabled.
+  Calibrated to semantic/theme/context weights 0.90/0.05/0.05, minimum relevance 0.45, and no
+  top-match margin. The previous 0.55/0.25/0.20 and 0.50 threshold had 1/34 P@1; the selected
+  setting had 9/34 P@1, 34/34 Recall@3, and 18/18 no-match accuracy.
+- Kept explicit-person relevance checks, card metadata, safety/eligibility logic, and the
+  conversation pipeline unchanged.
+
+### Verification
+- Focused role-model, evaluation, and historical pipeline tests: 36 passed.
+- Full suite: 440 passed, 1 deselected.
+- `ruff check .`: passed.
+- `git diff --check` reports only the pre-existing extra blank line at EOF in the user-modified
+  `data/role_models/marcus-control-response.yaml:27`; it was left untouched.
+- No model weights were downloaded and no external API calls were made.
+
+### Known issues
+- The 52 queries are synthetic and English-only; the evaluation is a calibration signal, not a
+  semantic quality guarantee. Returned-match precision on relevant queries was 9/11 (81.8%),
+  and only 11/34 relevant queries passed the threshold.
+- At evaluation time, the working tree contained pending user card-metadata edits (8 reviewed,
+  16 unreviewed), which are not part of the implementation baseline. Under that metadata,
+  reviewed-target top-1 coverage was 3/11 and unreviewed-target top-1 coverage was 6/23.
+  Every card's relevant queries had the target in its top three; correct top-1 retrieval occurred
+  on 8 of 24 distinct cards. Explicit-person requests matched the expected card on 2/4 examples.
+  Card ranking needs broader human-authored testing.
+
+### Next
+- Step 3 is complete. Review the calibrated retrieval behavior against a broader, independently
+  authored set before further threshold changes. Do not commit or push.
+
 ## Current Branch
 `layer-7-rolemodels`
+
+## Session: 2026-11-05 — Historical role-model pipeline integration
+
+### Done
+- Integrated the standalone hybrid retriever into `handle_turn()` after safety, emotion
+  extraction, planning, and state update. Matching is independent of counselling RAG and receives
+  the current and recent user messages plus updated state; assistant-generated analogies are not
+  added to the retrieval query.
+- Wired the production factory to the all-card retriever. The live retriever loads all 24 cards
+  with reviewed/unreviewed and verification metadata intact.
+- Kept a retrieved candidate separate from permission to use it. Existing safety, venting,
+  listening, phase (including the explicit clarification exception), session-cap, and spacing
+  checks gate generation; historical evidence is a separate prompt input and provenance is
+  recorded only when the validated reply actually uses it.
+- Updated generation instructions and historical validation so use is optional, no-card replies
+  remain ordinary counselling, and unreviewed cards are identified as unverified and cannot
+  support asserted historical facts. `avoid_when` remains exposed as prose rather than being
+  treated as machine-interpreted policy.
+- Added offline integration coverage for all-card availability, relevance and abstention,
+  explicit-person threshold behavior, empty counselling retrieval, eligibility restrictions,
+  unreviewed cards, and provenance.
+
+### Verification
+- Focused role-model, critic, and pipeline tests: 129 passed.
+- Full suite: 437 passed, 1 deselected, 19 warnings.
+- `ruff check .`: passed.
+- `git diff --check` reports only the existing trailing blank line in the user-modified
+  `data/role_models/marcus-control-response.yaml`. That YAML and the other pre-existing user
+  changes were left untouched.
+- No model weights were downloaded and no live provider calls were made.
+
+### Known issues
+- Retrieval weights and the minimum relevance threshold remain experimental, and real semantic
+  quality depends on the optional local model being available. If embedding is unavailable, the
+  retriever reports no match while retaining its loaded card metadata.
+- The historical critic is deterministic and conservative; it does not prove historical accuracy
+  or parse arbitrary `avoid_when` prose.
+
+### Next
+- Step 2 is complete. Stop before any further pipeline integration or unrelated changes. No commit
+  or push requested.
+
+## Session: 2026-11-05 — Standalone hybrid historical retriever
+
+### Done
+- Added `app/rolemodels/retriever.py` as a standalone retriever that explicitly loads all
+  historical cards, including unreviewed drafts, without changing card YAML or approval metadata.
+- Added semantic, inverse-frequency-weighted tag, and emotion/state-context scoring with a
+  configurable experimental relevance threshold and optional ambiguity margin.
+- Added focused offline tests using deterministic mocked embeddings; no model weights or external
+  APIs are used by the tests. The retriever is not integrated into `engine.py`.
+
+### Verification
+- Baseline suite: 416 passed, 1 deselected.
+- Focused retriever tests: 13 passed.
+- Full suite: 429 passed, 1 deselected, 19 warnings.
+- `ruff check .`: passed.
+- `git diff --check` reports only the pre-existing trailing blank line in the user-modified
+  `data/role_models/marcus-control-response.yaml`.
+
+### Known issues
+- Retrieval weights and the 0.50 minimum score are initial experimental settings, not validated
+  relevance thresholds. Semantic quality depends on the optional local model being available.
+- The full suite retains 19 existing warnings from `fitz` and Streamlit/Pandas.
+
+### Next
+- Step 1 is complete. Keep the retriever standalone; do not integrate it into `engine.py` without
+  separate authorization. No commit or push requested.
+
+## Session: 2026-11-05 — Kalam analogy framing
+
+### Done
+- Found that `_ANALOGY_FRAME` relied on broad keyword presence: detached labels such as "this is
+  an analogy" could pass, while a connection without a listed cue could fail.
+- Updated explicit historical-request prompts to ask for a clear, natural sentence linking the
+  selected example to the person's concern, with wording variation rather than a fixed template.
+- Tightened analogy validation to require a visible relation to the person's situation, concern,
+  or applicable action. Left factual, name, date, quotation, provenance, selector, and safety
+  checks unchanged.
+- Added accepted and rejected analogy-frame tests, prompt coverage for the reflective/no-RAG path,
+  and a clearer connected Kalam fixture. Existing Marcus coverage still passes.
+
+### Verification
+- Baseline suite: 403 passed, 1 deselected.
+- Focused role-model/pipeline suite: 60 passed.
+- Full suite: 416 passed, 1 deselected, 19 warnings.
+- `ruff check .`: passed.
+- `git diff --check` reports only the pre-existing trailing blank line in the user-modified
+  `data/role_models/marcus-control-response.yaml`.
+- No live Gemini calls were made.
+
+### Known issues
+- The live Kalam response still needs provider verification; no live request was made in this
+  session.
+
+### Next
+- Verify a live explicit Kalam response passes the role-model critic and main critic, then confirm
+  Marcus provenance behavior remains unchanged. No commit or push requested.
+
+## Session: 2026-11-05 — Explicit role-model clarification turns
+
+### Done
+- Identified the suppression: `enforce_plan()` can convert early-phase advice into
+  `ask_clarifying`, and `role_model_allowed()` rejected that move unconditionally even for an
+  explicit historical-person request. Explicit requests already bypass the ordinary phase filter.
+- Allowed an explicit request through the `ask_clarifying` move gate only. Safety, sticky crisis,
+  venting, other listening moves, and the two-use session cap remain enforced.
+- Added offline tests for explicit Kalam clarification, explicit Marcus selection in Exploration
+  after advice is converted to clarification, preservation of the planner's question, and retained
+  automatic/safety/listening/frequency restrictions.
+
+### Verification
+- Baseline suite: 400 passed, 1 deselected.
+- Focused role-model/pipeline/UI suite: 60 passed.
+- Full suite: 403 passed, 1 deselected.
+- `ruff check .`: passed.
+- No live Gemini calls were made; response generation still requires live verification.
+
+### Known issues
+- None introduced by this change; role-model generation still requires live provider verification.
+
+### Next
+- Review the explicit clarification-turn change. No commit or push requested.
+
+## Session: 2026-11-05 — Explicit historical role-model requests
+
+### Done
+- Passed the existing explicit-person request flag through reply generation into the prompt builder.
+- Made explicit selected cards required when safe to use, while automatic selections remain optional;
+  prompts now use canonical names, include the card's avoid-when condition, and forbid unsupported
+  historical details or figures when no card is selected.
+- Added actionable historical-critic retry feedback and retained the two-attempt critic/fallback
+  path. Added regression coverage for explicit Marcus Aurelius and A.P.J. Abdul Kalam requests,
+  safety suppression, missing cards, provenance, unsupported claims, and failed retries.
+- Kept explicit historical requests eligible when self-help retrieval is empty, while retaining
+  the reflect-only decision and all existing safety, venting, clarification, follow-up, and session
+  guards. Automatic historical inspirations remain optional.
+- Added a prompt path for a requested card presented reflectively when no self-help card is
+  available.
+- Replaced the growing sentence-opener allowlist with sentence-position-aware capitalized-token
+  diagnostics. Sentence splitting now preserves dotted initials; selected-card names and supported
+  card terminology remain allowed, while unsupported names still fail validation.
+- Made explicit-request prompts require a concise concern acknowledgment, the canonical figure
+  name, the card's lesson, and a clear analogy without a biography.
+- Added exact unsupported-token diagnostics to retry feedback and development trace summaries.
+  Trace steps distinguish first/retry critic results, complete validation, and safe fallback
+  without logging the generated reply.
+- Added offline regressions for Kalam and Marcus name variants, sentence openings, card-supported
+  locations, exact unsupported-name diagnostics, explicit/optional prompting, retry, and fallback.
+
+### Verification
+- Baseline suite: 382 passed, 1 deselected.
+- Focused role-model/pipeline/UI suite: 57 passed.
+- Full suite: 400 passed, 1 deselected.
+- `ruff check .`: passed.
+- `git diff --check` reports only the pre-existing trailing blank line in the user-modified
+  `data/role_models/marcus-control-response.yaml`; no task changes were made to that file.
+- No live Gemini calls were made; response generation still requires live verification.
+
+### Known issues
+- The historical critic remains a conservative deterministic check, not proof of historical
+  accuracy; reviewed cards still require human source verification.
+- The live failed drafts were not supplied, so their exact tokens cannot be reconstructed; the
+  diagnostic path is covered with the known sentence-opening false positives and an unsupported
+  name in scripted drafts.
+
+### Next
+- Review the final diff. No commit or push requested.
 
 ## Session: 2026-11-04 — Historical role-model knowledge
 

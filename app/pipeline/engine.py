@@ -40,10 +40,11 @@ from app.pipeline.prompts import build_planner_messages, build_reply_messages
 from app.pipeline.retrieval import CardLibrary, RetrieverLike, citations_for
 from app.pipeline.roles import ROLES, handoff_line
 from app.pipeline.types import PlannerOutput, ReplyOutput, SessionInfo, TurnOutput
-from app.rolemodels.critic import check_role_model_reply
+from app.rolemodels.critic import check_role_model_reply, has_historical_reference
 from app.rolemodels.library import RoleModelLibrary
-from app.rolemodels.models import RoleModelCard, RoleModelProvenance
-from app.rolemodels.selector import requested_person, role_model_allowed, select_role_model
+from app.rolemodels.models import PERSON_DISPLAY_NAMES, RoleModelCard, RoleModelProvenance
+from app.rolemodels.retriever import RoleModelRetrievalResult, RoleModelRetriever
+from app.rolemodels.selector import requested_person, role_model_allowed
 from app.safety.responses import CRISIS_TEMPLATE, ELEVATED_CHECK_IN, action_for
 from app.safety.sentinel import SafetyGate
 from app.storage import repository as repo
@@ -76,6 +77,19 @@ class EmotionReader(Protocol):
         """Return an emotion reading."""
 
 
+class HistoricalRetriever(Protocol):
+    """The historical-retrieval interface used independently of counselling RAG."""
+
+    def retrieve(
+        self,
+        current_user_message: str,
+        *,
+        recent_user_messages: Sequence[str] = (),
+        conversation_state: EmotionalState | None = None,
+    ) -> RoleModelRetrievalResult:
+        """Return the best sufficiently relevant historical card, if any."""
+
+
 def _ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000
 
@@ -102,6 +116,7 @@ class SolaceEngine:
         emotion_reader: EmotionReader | None = None,
         safety_gate: SafetyGate | None = None,
         role_model_library: RoleModelLibrary | None = None,
+        role_model_retriever: HistoricalRetriever | None = None,
     ) -> None:
         self._gateway = gateway
         self._factory = factory
@@ -109,7 +124,13 @@ class SolaceEngine:
         self._retriever = retriever
         self._emotion = emotion_reader
         self._gate = safety_gate or SafetyGate(classifier=None)
-        self._role_models = role_model_library or RoleModelLibrary({})
+        self._role_model_retriever = (
+            role_model_retriever
+            if role_model_retriever is not None
+            else RoleModelRetriever(library=role_model_library)
+            if role_model_library is not None
+            else RoleModelRetriever()
+        )
         self._runtimes: dict[str, SessionRuntime] = {}
 
     # ── Sessions ──────────────────────────────────────────────────────────────
@@ -180,7 +201,7 @@ class SolaceEngine:
             return self._finish_crisis(rt, text, turn_id, gate, steps, started)
 
         emotion = self._read_emotion(text, steps)
-        plan, plan_result, planner_ok = self._plan(rt, text, emotion, steps)
+        plan, _, planner_ok = self._plan(rt, text, emotion, steps)
         safety = self._merge_safety(gate, plan, planner_ok, rt)
         if safety.level == SafetyLevel.crisis:
             return self._finish_crisis(rt, text, turn_id, safety, steps, started, emotion=emotion)
@@ -189,33 +210,37 @@ class SolaceEngine:
         state = state_from_plan(plan, state_before)
         decision = enforce_plan(plan, rt, safety_level=safety.level, state=state)
 
+        explicit_role_model_request = requested_person(text) is not None
+        role_model_candidate = self._match_role_model(text, state, rt, steps)
+        role_model_eligibility_move = decision.move
         items, cards = self._retrieve(decision, state, steps, rt)
         if (decision.retrieve or decision.move == "follow_up") and not cards:
             decision = _listen_only(decision)
 
-        explicit_role_model_request = requested_person(text) is not None
         role_model: RoleModelCard | None = None
-        if enable_role_models:
+        if enable_role_models and role_model_candidate is not None:
             allowed = role_model_allowed(
                 safety_level=safety.level,
                 crisis_seen=bool(rt.gate_state.get("crisis_seen")),
                 phase=decision.phase,
-                move=decision.move,
+                move=(
+                    role_model_eligibility_move
+                    if explicit_role_model_request
+                    else decision.move
+                ),
                 need=state.need,
                 explicit_request=explicit_role_model_request,
                 use_turns=rt.role_model_use_turns,
                 current_turn=rt.turn_count + 1,
             )
             if allowed:
-                role_model = select_role_model(
-                    self._role_models,
-                    text,
-                    emotion_labels=[hypothesis.label for hypothesis in state.hypotheses[:3]],
-                )
-                summary = f"selected {role_model.id}" if role_model else "no clear match"
+                role_model = role_model_candidate
+                summary = f"eligible {role_model.id}"
             else:
                 summary = "suppressed by safety or session guardrails"
             steps.append(StepRecord(name="role_model", summary=summary, latency_ms=0.0))
+        elif enable_role_models:
+            steps.append(StepRecord(name="role_model", summary="no relevant match", latency_ms=0.0))
 
         reply_out, verdict, draft, provider_used, reply_ok = self._reply(
             rt,
@@ -226,6 +251,7 @@ class SolaceEngine:
             safety.level == SafetyLevel.elevated,
             steps,
             role_model=role_model,
+            explicit_role_model_request=explicit_role_model_request,
         )
         final = reply_out.reply
         if safety.level == SafetyLevel.elevated:
@@ -318,6 +344,46 @@ class SolaceEngine:
         )
 
     # ── Steps ─────────────────────────────────────────────────────────────────
+
+    def _match_role_model(
+        self,
+        text: str,
+        state: EmotionalState,
+        rt: SessionRuntime,
+        steps: list[StepRecord],
+    ) -> RoleModelCard | None:
+        """Retrieve an all-card historical candidate independently of counselling RAG."""
+        recent_user_messages = tuple(
+            message.content for message in rt.history if message.role == "user"
+        )[-4:]
+        started = time.perf_counter()
+        try:
+            result = self._role_model_retriever.retrieve(
+                text,
+                recent_user_messages=recent_user_messages,
+                conversation_state=state,
+            )
+        except Exception as exc:
+            logger.warning("Historical role-model retrieval failed (%s).", type(exc).__name__)
+            steps.append(
+                StepRecord(
+                    name="role_model_match",
+                    summary=f"unavailable ({type(exc).__name__})",
+                    latency_ms=_ms(started),
+                )
+            )
+            return None
+
+        candidate = result.match
+        summary = (
+            f"{candidate.card.id} score={candidate.score:.3f}"
+            if candidate is not None
+            else result.abstention_reason or "no relevant match"
+        )
+        steps.append(
+            StepRecord(name="role_model_match", summary=summary, latency_ms=_ms(started))
+        )
+        return candidate.card if candidate is not None else None
 
     def _read_emotion(self, text: str, steps: list[StepRecord]) -> EmotionReading | None:
         if self._emotion is None:
@@ -446,6 +512,7 @@ class SolaceEngine:
         steps: list[StepRecord],
         *,
         role_model: RoleModelCard | None = None,
+        explicit_role_model_request: bool = False,
     ) -> tuple[ReplyOutput, CriticVerdict, str | None, str, bool]:
         retrieved_ids = [i.doc_id for i in items]
         previous_bot = next((m.content for m in reversed(rt.history) if m.role == "assistant"), None)
@@ -465,6 +532,7 @@ class SolaceEngine:
                         user_text=text,
                         cards=cards,
                         role_model=role_model,
+                        explicit_request=explicit_role_model_request,
                         elevated=elevated,
                         feedback=feedback,
                     ),
@@ -492,10 +560,14 @@ class SolaceEngine:
                 used_card_ids=out.used_card_ids,
                 previous_reply=previous_bot,
             )
-            historical_issues = check_role_model_reply(
-                out.reply,
-                selected_card=role_model,
-                used_card_id=out.used_role_model_id,
+            historical_issues = (
+                check_role_model_reply(
+                    out.reply,
+                    selected_card=role_model,
+                    used_card_id=out.used_role_model_id,
+                )
+                if out.used_role_model_id is not None or has_historical_reference(out.reply)
+                else []
             )
             if historical_issues:
                 verdict = verdict.model_copy(
@@ -506,14 +578,17 @@ class SolaceEngine:
                     }
                 )
                 issues.extend(historical_issues)
+                issues.extend(_role_model_retry_feedback(historical_issues, role_model))
             if role_model is not None or out.used_role_model_id is not None:
+                attempt_label = "first" if attempt == 0 else "retry"
                 steps.append(
                     StepRecord(
                         name="role_model_critic",
                         summary=(
-                            "passed"
+                            f"{attempt_label} attempt passed"
                             if not historical_issues
-                            else "issues: " + "; ".join(historical_issues)[:120]
+                            else f"{attempt_label} attempt rejected: "
+                            + "; ".join(historical_issues)[:240]
                         ),
                         latency_ms=_ms(t0),
                     )
@@ -528,6 +603,18 @@ class SolaceEngine:
             if first_draft is None:
                 first_draft = out.reply
             if verdict.passed:
+                if role_model is not None and out.used_role_model_id == role_model.id:
+                    steps.append(
+                        StepRecord(
+                            name="role_model_validation",
+                            summary=(
+                                "complete reply validated on first attempt"
+                                if attempt == 0
+                                else "complete reply validated on retry"
+                            ),
+                            latency_ms=0.0,
+                        )
+                    )
                 return out, verdict, first_draft if attempt else None, provider_used, True
             feedback = issues
         safe = fallback_reply(decision.move, decision.question)
@@ -675,6 +762,57 @@ def _listen_only(decision: Decision) -> Decision:
         retrieve_query=None,
         notes=(*decision.notes, "no relevant card found: staying with listening"),
     )
+
+
+def _role_model_retry_feedback(
+    issues: list[str], role_model: RoleModelCard | None
+) -> list[str]:
+    """Translate historical critic failures into concrete instructions for the next draft."""
+    person = (
+        PERSON_DISPLAY_NAMES[role_model.person]
+        if role_model is not None
+        else "the selected historical figure"
+    )
+    feedback: list[str] = []
+    for issue in issues:
+        if "declares historical-card use without mentioning its person" in issue:
+            feedback.append(f"Name {person} explicitly in the reply.")
+        elif "historical example must be clearly framed as an analogy" in issue:
+            feedback.append("Explicitly frame the historical example as an analogy.")
+        elif issue.startswith("unsupported capitalized token(s):"):
+            tokens = issue.partition(":")[2].strip()
+            feedback.append(
+                f"Remove unsupported capitalized token(s): {tokens}; use only names present "
+                "in the selected card."
+            )
+        elif "introduces an unsupported historical date or number" in issue:
+            feedback.append(
+                "Remove unsupported dates, numbers, and statistics; use only details stated in the card."
+            )
+        elif "uses quotation marks in historical context" in issue:
+            feedback.append("Remove historical quotations and quotation marks.")
+        elif "claims the user's situation is the same as the historical person's" in issue:
+            feedback.append("Remove any claim that the two situations are identical or equivalent.")
+        elif "historical claim is not grounded in the selected card" in issue:
+            feedback.append(
+                "Remove unsupported historical facts and use only the selected card's information."
+            )
+        elif "introduces a historical person outside the selected card" in issue:
+            feedback.append("Remove every historical figure other than the selected person.")
+        elif "claims use of a historical card that was not selected" in issue:
+            feedback.append(
+                "Set used_role_model_id only to the selected card id when the reply genuinely uses it."
+            )
+        elif "mentions a historical person without declaring the selected card as used" in issue:
+            feedback.append(
+                "Either remove the historical mention or declare the selected card id only if it is used."
+            )
+        elif "explicitly requested historical card was not used" in issue:
+            feedback.append(
+                f"Use {person}'s selected card: name {person}, connect its lesson to the person's "
+                "situation, frame it as an analogy, and declare its id only if genuinely used."
+            )
+    return feedback
 
 
 __all__ = ["EmotionReader", "GatewayLike", "SolaceEngine"]

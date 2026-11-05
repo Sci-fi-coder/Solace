@@ -8,7 +8,7 @@ from app.contracts import EmotionReading, Message, Role, SafetyLevel, UserNeed
 from app.pipeline.guardrails import MAX_CLARIFYING, SessionRuntime
 from app.pipeline.roles import ROLES
 from app.rag.cards import Card
-from app.rolemodels.models import RoleModelCard
+from app.rolemodels.models import PERSON_DISPLAY_NAMES, RoleModelCard
 
 PLANNER_SYSTEM = """You are the planning brain of Solace, a supportive, non-clinical counselling companion. \
 You do NOT write the reply. Read the person's latest message in context and return ONE JSON object only.
@@ -139,6 +139,7 @@ def build_reply_messages(
     user_text: str,
     cards: list[Card],
     role_model: RoleModelCard | None = None,
+    explicit_request: bool = False,
     elevated: bool,
     feedback: list[str] | None = None,
 ) -> list[dict[str, str]]:
@@ -160,11 +161,38 @@ def build_reply_messages(
             "mention suicide or self-harm. A separate message with support options follows automatically."
         )
     if role_model is not None:
+        if explicit_request:
+            system += (
+                " The person explicitly requested a historical perspective. Consider this card only if it "
+                "is relevant, adds value, and its avoid-when condition does not apply; use is optional. "
+                "First address the person's actual concern. If you use the card, briefly explain its lesson "
+                "and connect it naturally to the situation as an analogy, never as an equivalent situation. "
+                "Do not give a biography or interrupt a needed clarifying question."
+            )
+        else:
+            system += (
+                " This separate historical card is optional and may be left unused if it does not add "
+                "value or naturally fit. First address the person's actual concern. If used, explain its "
+                "lesson and connect it naturally as an analogy, never as clinical advice or the same "
+                "situation."
+            )
+        if not role_model.reviewed:
+            system += (
+                " This card is UNVERIFIED. Do not present its historical details, dates, events, or "
+                "quotations as established facts; do not repeat specific historical events. If using the "
+                "card, explicitly identify the card or its historical account as unverified, and limit the "
+                "analogy to its general lesson."
+            )
         system += (
-            " A separate historical inspiration card may be used only as an analogy, never as clinical "
-            "advice or as the same situation. Use only facts in that card; do not introduce other people, "
-            "events, dates, numbers, or quotations. Do not use quotation marks. If it does not fit naturally, "
-            "leave it unused."
+            " Use only information supported by this card. Do not invent dates, statistics, events, "
+            "quotations, or other people; do not use quotation marks for historical quotations; and never "
+            "claim the person's situation is identical to the historical figure's. Set "
+            "used_role_model_id to the selected card id only when the reply genuinely uses that card."
+        )
+    else:
+        system += (
+            " No sufficiently relevant historical card was selected for this reply. Do not introduce or "
+            "make claims about a historical figure; continue with the counselling response."
         )
     system += (
         '\nReturn JSON only: {"reply": "...", "explanation": "one or two sentences on why you replied this '
@@ -184,14 +212,31 @@ def build_reply_messages(
     cards_text = f"\n\n{_card_block(cards)}" if cards else ""
     role_model_text = ""
     if role_model is not None:
+        use_requirement = (
+            "USER-REQUESTED HISTORICAL CARD (optional when relevant and appropriate)"
+            if explicit_request
+            else "OPTIONAL HISTORICAL INSPIRATION (not a self-help card)"
+        )
         role_model_text = (
-            "\n\nSEPARATE OPTIONAL HISTORICAL INSPIRATION (not a self-help card):\n"
+            f"\n\n{use_requirement}:\n"
             f"Card id: {role_model.id}\n"
-            f"Person: {role_model.person.value}\n"
+            f"Person: {PERSON_DISPLAY_NAMES[role_model.person]}\n"
+            f"Review status: {'reviewed' if role_model.reviewed else 'unreviewed'}\n"
+            f"Verification status: {role_model.verification.status}\n"
+            f"Source locators: {'; '.join(source.locator for source in role_model.sources)}\n"
             f"Title: {role_model.title}\n"
             f"Summary: {role_model.summary}\n"
             f"Lesson: {role_model.lesson}\n"
-            f"Framing: {role_model.framing}"
+            f"Framing: {role_model.framing}\n"
+            f"Avoid when: {role_model.avoid_when}"
+        )
+    if role_model is not None and explicit_request and move == "reflect" and not cards:
+        brief = (
+            "The person explicitly requested a historical perspective. First reflect their concern. "
+            "Only if the selected card is relevant, adds value, and its avoid-when condition does not "
+            "apply, you may briefly offer its lesson as a natural analogy. Keep the response reflective "
+            "rather than offering an unsupported self-help technique or advice. Preserve the planned "
+            "question, if any."
         )
     user = (
         f"{state_line}Recent turns:\n{_recent(rt.history)}\n\nLatest message from the person:\n{user_text}\n\n"
