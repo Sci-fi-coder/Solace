@@ -20,6 +20,7 @@ if str(_REPO) not in sys.path:
 from app.rag.embedder import LocalEmbedder  # noqa: E402
 from app.rolemodels.library import RoleModelLibrary  # noqa: E402
 from app.rolemodels.retriever import (  # noqa: E402
+    DEFAULT_MINIMUM_RELEVANCE,
     RetrievalWeights,
     RoleModelMatch,
     RoleModelRetrievalResult,
@@ -28,14 +29,16 @@ from app.rolemodels.retriever import (  # noqa: E402
 
 _CARD_DIR = _REPO / "data" / "role_models"
 _EVAL_PATH = _REPO / "tests" / "data" / "rolemodels_retrieval_eval.jsonl"
-_WEIGHT_CANDIDATES = (
-    RetrievalWeights(0.55, 0.25, 0.20),
-    RetrievalWeights(0.70, 0.20, 0.10),
-    RetrievalWeights(0.85, 0.10, 0.05),
-    RetrievalWeights(),
+_LEGACY_CATEGORIES = frozenset(
+    {
+        "paraphrase",
+        "explicit",
+        "contrastive",
+        "unrelated",
+        "ambiguous",
+        "explicit_unrelated",
+    }
 )
-_THRESHOLD_CANDIDATES = (0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50)
-_MARGIN_CANDIDATES: tuple[float | None, ...] = (None, 0.03, 0.05, 0.08)
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,7 @@ class EvaluationCase:
     target_card_id: str | None
     expected: Literal["match", "abstain"]
     category: str
+    recent_user_messages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,7 @@ def load_cases(path: Path = _EVAL_PATH) -> tuple[EvaluationCase, ...]:
                 target_card_id=target,
                 expected=expected,
                 category=value["category"],
+                recent_user_messages=tuple(value.get("recent_user_messages", ())),
             )
         )
     if not cases:
@@ -159,6 +164,10 @@ def evaluate(
         card.id: {"queries": 0, "top1_hits": 0, "recall_at_3_hits": 0}
         for card in library.all()
     }
+    per_person: dict[str, dict[str, int]] = {
+        person.value: {"queries": 0, "top1_hits": 0, "recall_at_3_hits": 0}
+        for person in sorted({card.person for card in library.all()}, key=lambda item: item.value)
+    }
     returned_status = {"reviewed": 0, "unreviewed": 0}
 
     for case in positive_cases:
@@ -183,6 +192,11 @@ def evaluate(
         per_card[target_id]["queries"] += 1
         per_card[target_id]["top1_hits"] += selected is not None and selected.card.id == target_id
         per_card[target_id]["recall_at_3_hits"] += recall3_hit
+        per_person[target.person.value]["queries"] += 1
+        per_person[target.person.value]["top1_hits"] += (
+            selected is not None and selected.card.id == target_id
+        )
+        per_person[target.person.value]["recall_at_3_hits"] += recall3_hit
         if selected is not None:
             returned_status["reviewed" if selected.card.reviewed else "unreviewed"] += 1
 
@@ -238,43 +252,31 @@ def evaluate(
             false_positives / negative_count if negative_count else 0.0
         ),
         "false_positives": false_positives,
-        "coverage_by_target_review_status": reviewed_targets,
+        "coverage_by_target_review_status": {
+            status: {
+                **coverage,
+                "top1_coverage": (
+                    coverage["top1_hits"] / coverage["targets"]
+                    if coverage["targets"]
+                    else 0.0
+                ),
+                "recall_at_3_coverage": (
+                    coverage["recall_at_3_hits"] / coverage["targets"]
+                    if coverage["targets"]
+                    else 0.0
+                ),
+            }
+            for status, coverage in reviewed_targets.items()
+        },
         "returned_positive_matches_by_review_status": returned_status,
         "by_category": categories,
+        "per_person": per_person,
         "per_card": per_card,
     }
 
 
-def _configuration_rows(
-    cases: tuple[EvaluationCase, ...],
-    results: dict[str, RoleModelRetrievalResult],
-    library: RoleModelLibrary,
-) -> list[tuple[Calibration, dict[str, object]]]:
-    """Score a small predeclared grid without repeating any embedding calls."""
-    rows = []
-    for weights in _WEIGHT_CANDIDATES:
-        for threshold in _THRESHOLD_CANDIDATES:
-            for margin in _MARGIN_CANDIDATES:
-                calibration = Calibration(weights, threshold, margin)
-                rows.append(
-                    (calibration, evaluate(cases, results, library, calibration))
-                )
-    return sorted(
-        rows,
-        key=lambda row: (
-            row[1]["false_positive_rate"],
-            -row[1]["precision_at_1"],
-            -row[1]["returned_match_precision_at_1"],
-            -row[1]["recall_at_3"],
-            -row[1]["no_match_accuracy"],
-            row[0].top_match_margin is not None,
-            row[0].minimum_relevance,
-        ),
-    )
-
-
 def main() -> None:
-    """Run offline real-embedding evaluation and print actual metrics."""
+    """Run offline real-embedding evaluation at the unchanged production calibration."""
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     cases = load_cases()
@@ -294,7 +296,10 @@ def main() -> None:
     )
     results: dict[str, RoleModelRetrievalResult] = {}
     for case in cases:
-        results[case.case_id] = retriever.retrieve(case.query)
+        results[case.case_id] = retriever.retrieve(
+            case.query,
+            recent_user_messages=case.recent_user_messages,
+        )
     unavailable = {
         result.embedder_error_type
         for result in results.values()
@@ -307,9 +312,8 @@ def main() -> None:
         )
         return
 
-    candidates = _configuration_rows(cases, results, library)
-    initial = Calibration(RetrievalWeights(0.55, 0.25, 0.20), 0.50, None)
-    chosen = candidates[0]
+    calibration = Calibration(RetrievalWeights(), DEFAULT_MINIMUM_RELEVANCE, None)
+    legacy_cases = tuple(case for case in cases if case.category in _LEGACY_CATEGORIES)
     output = {
         "embedding_model": LocalEmbedder.DEFAULT_MODEL,
         "embedding_source": "local cached weights; Hugging Face offline mode enabled",
@@ -317,46 +321,28 @@ def main() -> None:
         "cards": len(card_ids),
         "reviewed_cards": sum(card.reviewed for card in library.all()),
         "unreviewed_cards": sum(not card.reviewed for card in library.all()),
-        "initial_configuration": {
+        "configuration": {
             "weights": {
-                "semantic": initial.weights.semantic_similarity,
-                "theme": initial.weights.theme_overlap,
-                "context": initial.weights.context_compatibility,
+                "semantic": calibration.weights.semantic_similarity,
+                "theme": calibration.weights.theme_overlap,
+                "context": calibration.weights.context_compatibility,
             },
-            "minimum_relevance": initial.minimum_relevance,
-            "top_match_margin": initial.top_match_margin,
-            "metrics": evaluate(cases, results, library, initial),
+            "minimum_relevance": calibration.minimum_relevance,
+            "top_match_margin": calibration.top_match_margin,
         },
-        "calibrated_candidate": {
-            "weights": {
-                "semantic": chosen[0].weights.semantic_similarity,
-                "theme": chosen[0].weights.theme_overlap,
-                "context": chosen[0].weights.context_compatibility,
-            },
-            "minimum_relevance": chosen[0].minimum_relevance,
-            "top_match_margin": chosen[0].top_match_margin,
-            "metrics": chosen[1],
-        },
-        "top_calibration_candidates": [
-            {
-                "weights": (
-                    row[0].weights.semantic_similarity,
-                    row[0].weights.theme_overlap,
-                    row[0].weights.context_compatibility,
-                ),
-                "minimum_relevance": row[0].minimum_relevance,
-                "top_match_margin": row[0].top_match_margin,
-                "precision_at_1": row[1]["precision_at_1"],
-                "recall_at_3": row[1]["recall_at_3"],
-                "positive_match_coverage": row[1]["positive_match_coverage"],
-                "returned_match_precision_at_1": row[1][
-                    "returned_match_precision_at_1"
-                ],
-                "no_match_accuracy": row[1]["no_match_accuracy"],
-                "false_positive_rate": row[1]["false_positive_rate"],
-            }
-            for row in candidates[:10]
-        ],
+        "calibration_note": (
+            "Hybrid score weights and the relevance threshold were held fixed. The retrieval "
+            "representation was developed using this synthetic dataset, so these are "
+            "development results rather than an independent holdout."
+        ),
+        "legacy_subset_case_count": len(legacy_cases),
+        "legacy_52_case_subset": evaluate(
+            legacy_cases,
+            results,
+            library,
+            calibration,
+        ),
+        "expanded_dataset": evaluate(cases, results, library, calibration),
     }
     print(json.dumps(output, indent=2))
 

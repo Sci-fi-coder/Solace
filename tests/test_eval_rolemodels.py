@@ -7,6 +7,7 @@ from pathlib import Path
 from app.rolemodels.library import RoleModelLibrary
 from app.rolemodels.models import Person
 from app.rolemodels.retriever import (
+    DEFAULT_MINIMUM_RELEVANCE,
     RetrievalWeights,
     RoleModelRetrievalResult,
     RoleModelRetriever,
@@ -27,10 +28,33 @@ def test_evaluation_dataset_covers_all_cards_and_case_types() -> None:
 
     assert target_ids == {card.id for card in library.all()}
     assert len(target_ids) == 24
-    assert {"paraphrase", "explicit", "contrastive"} <= categories
+    assert {
+        "paraphrase",
+        "explicit",
+        "contrastive",
+        "implicit",
+        "implicit_confidence",
+        "multi_turn",
+    } <= categories
     assert {"unrelated", "ambiguous", "explicit_unrelated"} <= categories
     assert all(case.query.strip() for case in cases)
-    assert sum(case.expected == "abstain" for case in cases) >= 10
+    assert sum(case.expected == "abstain" for case in cases) >= 15
+    implicit_cases = [
+        case
+        for case in cases
+        if case.category in {"implicit", "implicit_confidence"}
+    ]
+    assert implicit_cases
+    assert all(requested_person(case.query) is None for case in implicit_cases)
+    assert all(
+        "example" not in case.query.casefold()
+        and "analogy" not in case.query.casefold()
+        and "historical" not in case.query.casefold()
+        for case in implicit_cases
+    )
+    multi_turn_cases = [case for case in cases if case.category == "multi_turn"]
+    assert len(multi_turn_cases) >= 5
+    assert all(case.recent_user_messages for case in multi_turn_cases)
     explicit_people = {
         requested_person(case.query) for case in cases if case.category == "explicit"
     }
@@ -75,7 +99,18 @@ def test_metrics_measure_match_recall_abstention_and_review_coverage() -> None:
     assert metrics["no_match_accuracy"] == 1.0
     assert metrics["false_positive_rate"] == 0.0
     reviewed = metrics["coverage_by_target_review_status"]["unreviewed"]
-    assert reviewed == {"targets": 1, "top1_hits": 1, "recall_at_3_hits": 1}
+    assert reviewed == {
+        "targets": 1,
+        "top1_hits": 1,
+        "recall_at_3_hits": 1,
+        "top1_coverage": 1.0,
+        "recall_at_3_coverage": 1.0,
+    }
+    assert metrics["per_person"]["gandhi"] == {
+        "queries": 1,
+        "top1_hits": 1,
+        "recall_at_3_hits": 1,
+    }
     assert metrics["by_category"]["unrelated"] == {
         "cases": 1,
         "expected_matches": 0,
@@ -90,5 +125,5 @@ def test_default_calibration_is_explicit_and_conservative() -> None:
     retriever = RoleModelRetriever(embedder=DeterministicTestEmbedder())
 
     assert retriever._weights == RetrievalWeights(0.90, 0.05, 0.05)
-    assert retriever._minimum_relevance == 0.45
+    assert retriever._minimum_relevance == DEFAULT_MINIMUM_RELEVANCE == 0.42
     assert retriever._top_match_margin is None

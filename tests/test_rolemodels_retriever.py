@@ -34,18 +34,26 @@ class DeterministicTestEmbedder:
         self.calls: list[tuple[str, ...]] = []
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        """Return fixed query/card vectors based on the input's first line."""
+        """Return fixed vectors for each card's sections and each query component."""
         self.calls.append(tuple(texts))
         vectors: list[list[float]] = []
-        for index, text in enumerate(texts):
+        target_card = False
+        section_prefixes = (
+            "Situation described by the card:",
+            "Lesson:",
+            "Framing:",
+            "Card themes and emotions:",
+        )
+        for text in texts:
             if text.startswith("Title: "):
                 title = text.splitlines()[0].removeprefix("Title: ")
-                vector = self.target_vector if title in self.target_titles else (0.0, 1.0)
+                target_card = title in self.target_titles
+                vector = self.target_vector if target_card else (0.0, 1.0)
+            elif text.startswith(section_prefixes):
+                vector = self.target_vector if target_card else (0.0, 1.0)
             else:
                 vector = self.query_vector
             vectors.append(list(vector))
-            if index == 0 and text.startswith("Title: "):
-                raise AssertionError("query must precede card documents")
         return vectors
 
 
@@ -232,7 +240,7 @@ def test_score_breakdown_matches_configured_contributions() -> None:
 
 
 def test_recent_user_messages_and_state_are_included_without_assistant_history() -> None:
-    """Only supplied user text and explicit state fields form the embedding query."""
+    """Current, recent, and state text are separate inputs; assistant text is excluded."""
     retriever, embedder = _retriever()
     current = "I am unsure what to do next."
     recent = "The deadline has made me feel pressured."
@@ -251,12 +259,106 @@ def test_recent_user_messages_and_state_are_included_without_assistant_history()
         conversation_state=state,
     )
 
-    embedded_query = embedder.calls[0][0]
-    assert current in embedded_query
-    assert recent in embedded_query
-    assert "work deadline" in embedded_query
-    assert "anxiety_fear" in embedded_query
-    assert "previous assistant analogy" not in embedded_query
+    embedded_queries = [
+        text
+        for text in embedder.calls[0]
+        if not text.startswith(
+            (
+                "Title:",
+                "Situation described by the card:",
+                "Lesson:",
+                "Framing:",
+                "Card themes and emotions:",
+            )
+        )
+    ]
+    assert embedded_queries[0].startswith(current)
+    assert embedded_queries[1].startswith(recent)
+    assert "work deadline" in embedded_queries[2]
+    assert "anxiety_fear" in embedded_queries[2]
+    assert embedded_queries[0] == current
+    assert embedded_queries[-1].startswith("Underlying concern:")
+    assert "previous assistant analogy" not in " ".join(embedded_queries)
+
+
+def test_named_person_is_not_used_as_relevance_evidence() -> None:
+    """A person's name narrows candidates but is removed from semantic scoring."""
+    target = "Responding to humiliation with purpose"
+    retriever, embedder = _retriever(
+        target_titles=(target,),
+        query_vector=(0.0, 0.0),
+    )
+
+    result = retriever.retrieve(
+        "Could Gandhi share an example about this unrelated topic: how do I tune a database?"
+    )
+
+    assert result.explicit_person == Person.gandhi
+    assert result.match is None
+    embedded_queries = [
+        text
+        for text in embedder.calls[0]
+        if not text.startswith(
+            (
+                "Title:",
+                "Situation described by the card:",
+                "Lesson:",
+                "Framing:",
+                "Card themes and emotions:",
+            )
+        )
+    ]
+    assert "Gandhi" not in embedded_queries[0]
+    assert "unrelated topic" in embedded_queries[0]
+
+
+def test_current_message_dominates_old_supporting_context() -> None:
+    """An old relevant concern cannot outweigh an unrelated current message."""
+    target = "Rebuilding confidence through self-belief"
+
+    class ConcernEmbedder(DeterministicTestEmbedder):
+        """Give a relevant concern and unrelated request orthogonal vectors."""
+
+        def embed(self, texts: Sequence[str]) -> list[list[float]]:
+            """Encode the selected card and map known message text to stable vectors."""
+            self.calls.append(tuple(texts))
+            target_card = False
+            vectors: list[list[float]] = []
+            for text in texts:
+                if text.startswith("Title: "):
+                    title = text.splitlines()[0].removeprefix("Title: ")
+                    target_card = title == target
+                    vector = self.target_vector if target_card else (0.0, 1.0)
+                elif text.startswith(
+                    (
+                        "Situation described by the card:",
+                        "Lesson:",
+                        "Framing:",
+                        "Card themes and emotions:",
+                    )
+                ):
+                    vector = self.target_vector if target_card else (0.0, 1.0)
+                elif "I do not trust my abilities" in text:
+                    vector = (1.0, 0.0)
+                elif "keyboard shortcuts" in text:
+                    vector = (0.0, 0.0)
+                else:
+                    vector = (0.0, 1.0)
+                vectors.append(list(vector))
+            return vectors
+
+    retriever = RoleModelRetriever(
+        directory=CARD_DIR,
+        embedder=ConcernEmbedder(),
+    )
+    result = retriever.retrieve(
+        "How can I change my editor's keyboard shortcuts?",
+        recent_user_messages=("I do not trust my abilities enough to begin.",),
+    )
+
+    assert result.match is None
+    target_match = next(item for item in result.ranked_matches if item.card.id == "vivekananda-strength-self-belief")
+    assert target_match.breakdown.semantic_similarity == pytest.approx(0.1578947)
 
 
 def test_common_tags_receive_less_weight_than_rare_tags() -> None:

@@ -5,6 +5,52 @@
 
 ---
 
+## Session: 2026-11-05 — Automatic historical matching improvements (Step 6)
+
+### Done
+- Enriched historical card embeddings with five separate sections and taxonomy-based language
+  descriptors derived only from existing card tags/emotions and text. Card YAML and status remain
+  unchanged.
+- Made semantic query inputs explicit: sanitized current message, recent user messages, state,
+  and a separate supplementary current-message tag descriptor. Current/recent/state source
+  weights remain 0.80/0.15/0.05; explicit names only restrict candidates and do not add semantic
+  evidence.
+- Kept score weights at 0.90/0.05/0.05. Changed the minimum relevance threshold from 0.45 to
+  0.42 based on the real-model development evaluation: P@1 and positive coverage rose, while
+  observed false-positive rate and no-match accuracy stayed unchanged. Eligibility and safety
+  code were not changed.
+- Expanded the deterministic evaluation dataset to 86 cases and updated reporting for recent
+  messages, per-person/per-card outcomes, and reviewed/unreviewed coverage. Fixed the pipeline
+  test embedder to model all five card sections rather than treating non-title card sections as
+  query vectors.
+- At threshold 0.42, the cached local model produced 30/65 Precision@1 (46.2%), 30/36 conditional
+  precision (83.3%), 36/65 relevant-query coverage (55.4%), 57/65 Recall@3 (87.7%), and 20/21
+  no-match accuracy (95.2%). On the legacy subset it produced 27/34 Precision@1 and 27/28
+  conditional precision. Exact confidence target matching remains weak (0/4).
+
+### Verification
+- Focused role-model, evaluation, and pipeline tests: 38 passed.
+- Full suite: 442 passed, 1 deselected.
+- `ruff check .`: passed.
+- `git diff --check` reports only the pre-existing extra blank line at EOF in the user-modified
+  `data/role_models/marcus-control-response.yaml:27`; that card and all other pre-existing README
+  and YAML edits were left untouched.
+- Real evaluation used only cached `all-MiniLM-L6-v2` weights with offline flags; no model download
+  or external API calls.
+
+### Known issues
+- The 86-case set was used while developing the representation; it is a synthetic development
+  set, not an independent holdout. One ambiguous negative still causes a false positive.
+- Only 3/24 implicit per-card cases match their exact target at the selected threshold; the four
+  confidence paraphrases produce 0/4 exact-target top-1 hits. Some are semantically close to a
+  different card, but this must not be reported as exact-target success.
+- Per-card results are uneven. Expand independent evaluation before further weight/threshold
+  changes; do not modify safety or historical-use eligibility.
+
+### Next
+- Step 6 is complete. Obtain independently authored evaluation data before further calibration.
+  Do not stage, commit, or push.
+
 ## Session: 2026-11-05 — Historical retrieval evaluation and calibration (Step 3)
 
 ### Done

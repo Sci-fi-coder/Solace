@@ -129,10 +129,20 @@ class FixtureRoleModelEmbedder:
     def embed(self, texts):
         """Make only the named card semantically similar to every test query."""
         vectors = []
+        target_card = False
+        section_prefixes = (
+            "Situation described by the card:",
+            "Lesson:",
+            "Framing:",
+            "Card themes and emotions:",
+        )
         for text in texts:
             if text.startswith("Title: "):
                 title = text.splitlines()[0].removeprefix("Title: ")
-                vectors.append([1.0, 0.0] if title == self.target_title else [0.0, 1.0])
+                target_card = title == self.target_title
+                vectors.append([1.0, 0.0] if target_card else [0.0, 1.0])
+            elif text.startswith(section_prefixes):
+                vectors.append([1.0, 0.0] if target_card else [0.0, 1.0])
             else:
                 self.queries.append(text)
                 vectors.append([1.0, 0.0])

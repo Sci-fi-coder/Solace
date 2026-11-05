@@ -22,17 +22,51 @@ logger = logging.getLogger(__name__)
 _TAG_TERMS: dict[str, tuple[str, ...]] = {
     "anger": ("anger", "angry", "furious", "irritated", "frustrated"),
     "calm": ("calm", "quiet", "settled", "peaceful"),
-    "failure": ("fail", "failed", "failing", "failure", "mistake", "setback"),
+    "failure": (
+        "fail",
+        "failed",
+        "failing",
+        "failure",
+        "mistake",
+        "setback",
+        "fear of failure",
+        "afraid of failing",
+        "scared of failing",
+        "won't succeed",
+    ),
     "fear": ("fear", "afraid", "anxious", "worried", "nervous", "panic", "stress"),
     "grief": ("grief", "grieving", "loss", "bereaved"),
     "hardship": ("hardship", "difficult time", "struggle", "adversity"),
     "humiliation": ("humiliated", "humiliation", "ridiculed", "embarrassed", "mocked"),
     "low_mood": ("low", "down", "sad", "empty", "hopeless", "lonely"),
     "pressure": ("pressure", "pressured", "overwhelmed", "deadline", "demand"),
-    "purpose": ("purpose", "meaning", "values", "direction"),
+    "purpose": (
+        "purpose",
+        "meaning",
+        "values",
+        "direction",
+        "goal that matters",
+        "meaningful goal",
+        "something meaningful",
+    ),
     "responsibility": ("responsibility", "responsible", "duty", "accountable"),
     "routine": ("routine", "habit", "daily practice", "regular"),
-    "self_doubt": ("self doubt", "doubt myself", "insecure", "inadequate", "not good enough"),
+    "self_doubt": (
+        "self doubt",
+        "doubt myself",
+        "insecure",
+        "inadequate",
+        "not good enough",
+        "lack confidence",
+        "lacking confidence",
+        "don't trust my abilities",
+        "do not trust my abilities",
+        "doubt my abilities",
+        "hesitate to begin",
+        "putting off my goals",
+        "postponing my goals",
+        "think i won't succeed",
+    ),
     "uncertainty": ("uncertain", "unsure", "uncertainty", "unclear"),
 }
 
@@ -66,6 +100,48 @@ _STATE_FIELDS = (
     "functional_impact",
     "need",
 )
+_CARD_SECTION_COUNT = 5
+_CURRENT_TAG_DESCRIPTOR_WEIGHT = 0.15
+DEFAULT_MINIMUM_RELEVANCE = 0.42
+_QUERY_SOURCE_WEIGHTS = {
+    "current": 0.80,
+    "recent": 0.15,
+    "state": 0.05,
+}
+_PERSON_QUERY_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bmahatma\s+gandhi\b",
+        r"\bgandhi\b",
+        r"\bswami\s+vivekananda\b",
+        r"\bvivekananda\b",
+        r"\bmarcus\s+aurelius\b",
+        r"\bmarcus\b",
+        r"\baurelius\b",
+        r"\ba\.?\s*p\.?\s*j\.?\s*abdul\s+kalam\b",
+        r"\babdul\s+kalam\b",
+        r"\bkalam\b",
+    )
+)
+_TAG_DESCRIPTORS: dict[str, str] = {
+    "anger": "frustration, irritation, fury, or a strong reaction",
+    "calm": "settling, quiet, and a peaceful pause",
+    "failure": "a setback, mistake, poor result, missed goal, or fear of not succeeding",
+    "fear": "worry, anxiety, nervousness, or fear",
+    "grief": "loss, mourning, or bereavement",
+    "hardship": "adversity, obstacles, a difficult period, or unstable circumstances",
+    "humiliation": "public embarrassment, being mocked, or feeling shamed",
+    "low_mood": "sadness, emptiness, loneliness, or hopelessness",
+    "pressure": "overload, demands, feeling overwhelmed, or deadline stress",
+    "purpose": "meaningful goals, important aims, values, or direction",
+    "responsibility": "duty, accountability, carrying a burden, or ownership",
+    "routine": "a daily habit, repeated practice, small steps, or steady progress",
+    "self_doubt": (
+        "questioning your abilities, lacking confidence, feeling inadequate, "
+        "fear of not succeeding, or hesitation before beginning"
+    ),
+    "uncertainty": "not knowing, indecision, an unclear next move, or doubt",
+}
 
 
 @dataclass(frozen=True)
@@ -152,7 +228,7 @@ class RoleModelRetriever:
         library: RoleModelLibrary | None = None,
         embedder: Embedder | None = None,
         weights: RetrievalWeights | None = None,
-        minimum_relevance: float = 0.45,
+        minimum_relevance: float = DEFAULT_MINIMUM_RELEVANCE,
         top_match_margin: float | None = None,
     ) -> None:
         """Load all cards and configure an independently tunable relevance policy."""
@@ -173,8 +249,12 @@ class RoleModelRetriever:
         self._weights = weights if weights is not None else RetrievalWeights()
         self._minimum_relevance = minimum_relevance
         self._top_match_margin = top_match_margin
-        self._card_texts = tuple(self._card_text(card) for card in self._cards)
-        self._card_vectors: tuple[tuple[float, ...], ...] | None = None
+        self._card_texts = tuple(
+            section
+            for card in self._cards
+            for section in self._card_text(card)
+        )
+        self._card_vectors: tuple[tuple[tuple[float, ...], ...], ...] | None = None
         self._tag_weights = self._inverse_frequency_weights(
             [set(card.tags) for card in self._cards]
         )
@@ -203,23 +283,35 @@ class RoleModelRetriever:
         if not current_user_message.strip():
             raise ValueError("current_user_message must not be empty")
 
-        user_messages = tuple(
+        recent_messages = tuple(
             message.strip()
-            for message in (current_user_message, *recent_user_messages)
+            for message in recent_user_messages
             if message.strip()
         )
         state_values = self._state_values(conversation_state)
         state_text = self._state_text(state_values)
-        query_text = "\n".join((*user_messages, state_text)).strip()
-        person = self._resolve_person(explicit_person, "\n".join(user_messages))
+        person = self._resolve_person(explicit_person, current_user_message)
         candidates = tuple(
             card for card in self._cards if person is None or card.person == person
         )
         if not candidates:
             return RoleModelRetrievalResult(None, (), "no_candidates", person)
 
+        current_tag_descriptor = self._tag_descriptor_query(current_user_message)
         try:
-            query_vector = self._query_vector(query_text)
+            query_texts = [
+                self._semantic_query(current_user_message),
+                *(self._semantic_query(message) for message in recent_messages),
+            ]
+            state_index = len(query_texts) if state_text else None
+            if state_text:
+                query_texts.append(state_text)
+            if current_tag_descriptor is not None:
+                current_tag_descriptor_index = len(query_texts)
+                query_texts.append(current_tag_descriptor)
+            else:
+                current_tag_descriptor_index = None
+            query_vectors, card_vectors = self._vectors_for_query(query_texts)
         except (ImportError, OSError) as exc:
             logger.warning("Historical role-model embeddings unavailable (%s)", type(exc).__name__)
             return RoleModelRetrievalResult(
@@ -230,23 +322,62 @@ class RoleModelRetriever:
                 embedder_error_type=type(exc).__name__,
             )
 
-        user_text = "\n".join(user_messages)
-        user_tags = self._extract_tags(user_text)
+        user_tags = self._extract_tags(current_user_message)
         state_tags = self._extract_tags(state_text)
-        user_emotions = self._extract_emotions(user_text)
-        user_emotions.update(self._state_emotions(state_values))
+        user_emotions = self._extract_emotions(current_user_message)
+        state_emotions = self._state_emotions(state_values)
 
         matches: list[RoleModelMatch] = []
-        for card, card_vector in zip(self._cards, self._get_card_vectors(), strict=True):
+        recent_vectors = query_vectors[1 : 1 + len(recent_messages)]
+        state_vector = (
+            query_vectors[state_index]
+            if state_index is not None
+            else None
+        )
+        for card, section_vectors in zip(self._cards, card_vectors, strict=True):
             if person is not None and card.person != person:
                 continue
-            semantic = self._cosine_similarity(query_vector, card_vector)
+            current_semantic = self._section_similarity(
+                query_vectors[0],
+                section_vectors,
+            )
+            if current_tag_descriptor_index is not None:
+                descriptor_similarity = self._section_similarity(
+                    query_vectors[current_tag_descriptor_index],
+                    section_vectors,
+                )
+                current_semantic = (
+                    current_semantic * (1.0 - _CURRENT_TAG_DESCRIPTOR_WEIGHT)
+                    + descriptor_similarity * _CURRENT_TAG_DESCRIPTOR_WEIGHT
+                )
+            recent_semantic = self._recent_similarity(
+                recent_vectors,
+                section_vectors,
+            )
+            state_semantic = (
+                self._section_similarity(state_vector, section_vectors)
+                if state_vector is not None
+                else None
+            )
+            semantic = self._combine_query_sources(
+                current_semantic,
+                recent_semantic,
+                state_semantic,
+            )
             theme = self._weighted_jaccard(user_tags, set(card.tags), self._tag_weights)
             context_signals: list[float] = []
             if user_emotions:
                 context_signals.append(
                     self._weighted_jaccard(
                         user_emotions, set(card.emotions), self._emotion_weights
+                    )
+                )
+            if state_emotions:
+                context_signals.append(
+                    self._weighted_jaccard(
+                        state_emotions,
+                        set(card.emotions),
+                        self._emotion_weights,
                     )
                 )
             if state_tags:
@@ -281,32 +412,50 @@ class RoleModelRetriever:
 
         return RoleModelRetrievalResult(best, ranked, None, person)
 
-    def _query_vector(self, query_text: str) -> tuple[float, ...]:
-        """Embed one query and lazily cache validated vectors for every card."""
+    def _vectors_for_query(
+        self,
+        query_texts: Sequence[str],
+    ) -> tuple[
+        tuple[tuple[float, ...], ...],
+        tuple[tuple[tuple[float, ...], ...], ...],
+    ]:
+        """Embed query parts and lazily cache four separately encoded card sections."""
+        section_count = _CARD_SECTION_COUNT
         if self._card_vectors is None:
-            vectors = self._embedder.embed([query_text, *self._card_texts])
-            if len(vectors) != len(self._cards) + 1:
+            vectors = self._embedder.embed([*self._card_texts, *query_texts])
+            expected = len(self._card_texts) + len(query_texts)
+            if len(vectors) != expected:
                 raise ValueError("embedder returned an unexpected number of vectors")
-            query_vector = self._validated_vector(vectors[0])
-            card_vectors = tuple(self._validated_vector(vector) for vector in vectors[1:])
-            if any(len(vector) != len(query_vector) for vector in card_vectors):
-                raise ValueError("embedder returned vectors with inconsistent dimensions")
+            card_vectors = tuple(
+                tuple(
+                    self._validated_vector(vector)
+                    for vector in vectors[index : index + section_count]
+                )
+                for index in range(0, len(self._card_texts), section_count)
+            )
             self._card_vectors = card_vectors
-            return query_vector
+            query_vectors = tuple(
+                self._validated_vector(vector)
+                for vector in vectors[len(self._card_texts) :]
+            )
+        else:
+            vectors = self._embedder.embed(query_texts)
+            if len(vectors) != len(query_texts):
+                raise ValueError("embedder returned an unexpected number of vectors")
+            query_vectors = tuple(self._validated_vector(vector) for vector in vectors)
 
-        vectors = self._embedder.embed([query_text])
-        if len(vectors) != 1:
-            raise ValueError("embedder returned an unexpected number of vectors")
-        query_vector = self._validated_vector(vectors[0])
-        if len(query_vector) != len(self._card_vectors[0]):
-            raise ValueError("query vector dimension does not match card vectors")
-        return query_vector
-
-    def _get_card_vectors(self) -> tuple[tuple[float, ...], ...]:
-        """Return card vectors populated by the current query embedding call."""
-        if self._card_vectors is None:
-            raise RuntimeError("card embeddings were not initialized")
-        return self._card_vectors
+        if not query_vectors or self._card_vectors is None:
+            raise ValueError("query and card vectors are required for retrieval")
+        dimension = len(query_vectors[0])
+        if any(len(vector) != dimension for vector in query_vectors):
+            raise ValueError("embedder returned query vectors with inconsistent dimensions")
+        if any(
+            len(vector) != dimension
+            for card in self._card_vectors
+            for vector in card
+        ):
+            raise ValueError("embedder returned card vectors with inconsistent dimensions")
+        return query_vectors, self._card_vectors
 
     @staticmethod
     def _validated_vector(vector: Sequence[float]) -> tuple[float, ...]:
@@ -327,18 +476,86 @@ class RoleModelRetriever:
         return max(0.0, min(1.0, similarity / (left_norm * right_norm)))
 
     @staticmethod
-    def _card_text(card: RoleModelCard) -> str:
-        """Build semantic text from user-relevant card content, excluding avoid prose."""
-        return "\n".join(
-            (
-                f"Title: {card.title}",
-                f"Tags: {', '.join(card.tags)}",
-                f"Emotions: {', '.join(card.emotions)}",
-                card.summary,
-                card.lesson,
-                card.framing,
-            )
+    def _section_similarity(
+        query_vector: Sequence[float],
+        card_vectors: Sequence[Sequence[float]],
+    ) -> float:
+        """Use the best card section as semantic evidence without diluting a focused match."""
+        similarities = tuple(
+            RoleModelRetriever._cosine_similarity(query_vector, vector)
+            for vector in card_vectors
         )
+        return max(similarities)
+
+    @classmethod
+    def _recent_similarity(
+        cls,
+        recent_vectors: Sequence[Sequence[float]],
+        card_vectors: Sequence[Sequence[float]],
+    ) -> float | None:
+        """Return decayed similarity to recent user messages, newest message weighted most."""
+        if not recent_vectors:
+            return None
+        message_weights = tuple(
+            0.5 ** (len(recent_vectors) - index - 1)
+            for index in range(len(recent_vectors))
+        )
+        total_weight = sum(message_weights)
+        return sum(
+            weight * cls._section_similarity(vector, card_vectors)
+            for weight, vector in zip(message_weights, recent_vectors, strict=True)
+        ) / total_weight
+
+    @staticmethod
+    def _combine_query_sources(
+        current: float,
+        recent: float | None,
+        state: float | None,
+    ) -> float:
+        """Keep the current concern dominant and use history/state only as support."""
+        sources = [(current, _QUERY_SOURCE_WEIGHTS["current"])]
+        if recent is not None:
+            sources.append((recent, _QUERY_SOURCE_WEIGHTS["recent"]))
+        if state is not None:
+            sources.append((state, _QUERY_SOURCE_WEIGHTS["state"]))
+        total_weight = sum(weight for _, weight in sources)
+        return sum(score * weight for score, weight in sources) / total_weight
+
+    @staticmethod
+    def _card_text(card: RoleModelCard) -> tuple[str, str, str, str, str]:
+        """Build semantic sections, using tag descriptors without adding historical claims."""
+        person = PERSON_DISPLAY_NAMES[card.person]
+        descriptors = tuple(
+            _TAG_DESCRIPTORS[tag]
+            for tag in card.tags
+            if tag in _TAG_DESCRIPTORS
+        )
+        return (
+            f"Title: {card.title}\nPerson: {person}",
+            f"Situation described by the card: {card.summary}",
+            f"Lesson: {card.lesson}",
+            f"Framing: {card.framing}",
+            f"Card themes and emotions: {', '.join((*card.tags, *card.emotions))}\n"
+            f"Related language: {'; '.join(descriptors)}",
+        )
+
+    @staticmethod
+    def _semantic_query(text: str) -> str:
+        """Remove explicit historical names from the semantic relevance query."""
+        semantic_text = text
+        for pattern in _PERSON_QUERY_PATTERNS:
+            semantic_text = pattern.sub(" ", semantic_text)
+        return " ".join(semantic_text.split())
+
+    @staticmethod
+    def _tag_descriptor_query(text: str) -> str | None:
+        """Return a separate, supplementary query for detected card-taxonomy themes."""
+        descriptors = tuple(
+            _TAG_DESCRIPTORS[tag]
+            for tag in RoleModelRetriever._extract_tags(text)
+            if tag in _TAG_DESCRIPTORS
+        )
+        return f"Underlying concern: {'; '.join(descriptors)}" if descriptors else None
 
     @staticmethod
     def _inverse_frequency_weights(documents: Sequence[set[str]]) -> dict[str, float]:

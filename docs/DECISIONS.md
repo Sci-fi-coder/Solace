@@ -525,3 +525,26 @@ matches for relevant queries, 9 matched the expected card (81.8% conditional pre
 11/34 relevant queries passed the threshold. Expand with independently authored messages before
 further calibration. The evaluation does not change card content, verification status, or
 pipeline/safety eligibility.
+
+### D-061: Enrich automatic historical retrieval without relaxing eligibility
+**Decision:** Embed five distinct card sections (title/person, summary, lesson, framing, and
+tags/emotions with taxonomy-based descriptions). Embed the sanitized current user message
+separately from recent user messages and state. Blend a 15% current-message tag-description
+similarity into the current semantic signal; retain current/recent/state source weights of
+0.80/0.15/0.05. Keep semantic/theme/context score weights at 0.90/0.05/0.05, set minimum
+relevance to 0.42, and leave the top-match margin disabled. Explicit person names restrict
+candidates but are removed from semantic relevance text. Do not change safety or use eligibility.
+**Rationale:** With cached `all-MiniLM-L6-v2` in offline mode, the 86-case synthetic development
+set improved from threshold 0.45 to 0.42: Precision@1 rose from 28/65 (43.1%) to 30/65 (46.2%),
+positive match coverage from 32/65 (49.2%) to 36/65 (55.4%), and false-positive rate stayed at
+1/21 (4.8%); no-match accuracy stayed at 20/21 (95.2%) and Recall@3 at 57/65 (87.7%). On the
+original 52-case subset, 0.42 yielded 27/34 Precision@1 (79.4%), 27/28 conditional precision
+(96.4%), 28/34 coverage (82.4%), 34/34 Recall@3, and 17/18 no-match accuracy. The earlier
+calibration baseline had 9/34 Precision@1, 9/11 conditional precision, 11/34 coverage, 34/34
+Recall@3, and 18/18 no-match accuracy.
+**Limitations:** These are synthetic development results, not an independent holdout or quality
+guarantee. The 24 new implicit cases had only 3 correct top-1 results at 0.42; the four
+confidence-specific cases had 0/4 exact-target top-1 hits. One ambiguous negative still produces
+a false positive. Keep this limitation visible and expand independently authored validation before
+further calibration. Reviewed-target coverage was 10/19 top-1 and 18/19 Recall@3; unreviewed-target
+coverage was 20/46 top-1 and 39/46 Recall@3.
